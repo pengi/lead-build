@@ -8,6 +8,8 @@ use error::Result;
 use grammar::DnjParser;
 use std::{path::PathBuf, process::exit};
 
+use datamodel::Scope;
+
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
@@ -17,8 +19,10 @@ struct Args {
 }
 
 fn run(args: Args) -> Result<()> {
-    let ast = DnjParser::parse_file(args.input)?;
-    println!("Done: {:#?}", ast);
+    let expr = DnjParser::parse_file(args.input)?;
+    let scope = Scope::new();
+    let resolved = scope.resolve(expr).unwrap();
+    println!("Done: {:#?}", resolved);
     Ok(())
 }
 

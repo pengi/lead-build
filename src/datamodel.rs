@@ -63,7 +63,7 @@ impl PartialEq for Scope {
 
 impl Default for Scope {
     fn default() -> Self {
-        Self { vars: ImMap::new() }
+        Self::new()
     }
 }
 
@@ -74,6 +74,10 @@ impl From<ImMap<Rc<Expr>>> for Scope {
 }
 
 impl Scope {
+    pub fn new() -> Scope {
+        Scope { vars: ImMap::new() }
+    }
+
     fn resolve_once(&self, expr: Rc<Expr>) -> Result<Rc<Expr>> {
         match expr.as_ref() {
             Expr::Let(fields, target_expr) => {
