@@ -21,8 +21,9 @@ struct Args {
 fn run(args: Args) -> Result<()> {
     let expr = DnjParser::parse_file(args.input)?;
     let scope = Scope::new();
-    let resolved = scope.resolve(expr).unwrap();
-    println!("Done: {:#?}", resolved);
+    println!("input: {:#}", expr);
+    let resolved = scope.eval(expr).unwrap();
+    println!("output: {:#}", resolved);
     Ok(())
 }
 

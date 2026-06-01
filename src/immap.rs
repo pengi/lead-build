@@ -1,7 +1,4 @@
-use std::collections::BTreeMap;
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct ImMap<T: Clone + PartialEq>(BTreeMap<String, T>);
+use std::{collections::BTreeMap, fmt::Display};
 
 #[derive(Debug)]
 pub enum Error {
@@ -18,9 +15,29 @@ impl ToString for Error {
 
 type Result<T> = std::result::Result<T, Error>;
 
+#[derive(Debug, PartialEq, Clone)]
+pub struct ImMap<T: Display + Clone + PartialEq>(BTreeMap<String, T>);
+
+impl<T> Display for ImMap<T>
+where
+    T: Clone + PartialEq + Display,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("{ ")?;
+        for (key, value) in self.0.iter() {
+            f.write_str(key)?;
+            f.write_str(" = ")?;
+            value.fmt(f)?;
+            f.write_str("; ")?;
+        }
+        f.write_str("}")?;
+        Ok(())
+    }
+}
+
 impl<T> Default for ImMap<T>
 where
-    T: Clone + PartialEq,
+    T: Display + Clone + PartialEq,
 {
     fn default() -> Self {
         Self::new()
@@ -29,25 +46,32 @@ where
 
 impl<T> ImMap<T>
 where
-    T: Clone + PartialEq,
+    T: Display + Clone + PartialEq,
 {
     pub fn new() -> ImMap<T> {
         Self(BTreeMap::new())
     }
 
     pub fn single(key: String, value: T) -> ImMap<T> {
-        Self::new().set_inplace(key, value).unwrap()
+        Self::new().set(key, value).unwrap()
     }
 
     pub fn from(fields: impl Iterator<Item = (String, T)>) -> Result<ImMap<T>> {
         let mut ret: ImMap<T> = Default::default();
         for (key, value) in fields {
-            ret = ret.set_inplace(key, value)?
+            ret = ret.set(key, value)?
         }
         Ok(ret)
     }
 
-    pub fn set_inplace(self, key: String, value: T) -> Result<ImMap<T>> {
+    pub fn merge(self, other: &ImMap<T>) -> ImMap<T> {
+        let mut out = self.0;
+        let mut to_update = other.0.clone();
+        out.append(&mut to_update);
+        ImMap(out)
+    }
+
+    pub fn set(self, key: String, value: T) -> Result<ImMap<T>> {
         let mut map = self;
         let res = map.0.insert(key.clone(), value);
         match res {
@@ -56,19 +80,7 @@ where
         }
     }
 
-    pub fn set(&self, key: String, value: T) -> Option<ImMap<T>> {
-        let mut map = self.0.clone();
-        map.insert(key, value)?;
-        Some(ImMap(map))
-    }
-
-    pub fn unset(&self, key: &str) -> ImMap<T> {
-        let mut map = self.0.clone();
-        let _ = map.remove(key);
-        ImMap(map)
-    }
-
-    pub fn unset_inplace(self, key: &str) -> ImMap<T> {
+    pub fn unset(self, key: &str) -> ImMap<T> {
         let mut map = self;
         map.0.remove(key);
         map
@@ -81,7 +93,7 @@ where
     pub fn map<B, F>(&self, f: F) -> ImMap<B>
     where
         F: Fn(&T) -> B,
-        B: Clone + PartialEq,
+        B: Display + Clone + PartialEq,
     {
         ImMap::from(self.0.iter().map(|(name, value)| (name.clone(), f(value)))).unwrap()
     }

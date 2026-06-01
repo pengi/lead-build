@@ -62,7 +62,7 @@ impl DnjParser {
         };
         let mut map: ImMap<Rc<Expr>> = ImMap::new();
         for (key, value, span) in assignments {
-            map = map.set_inplace(key, value).map_err(|err| {
+            map = map.set(key, value).map_err(|err| {
                 Error::new_from_span(
                     ErrorVariant::CustomError {
                         message: err.to_string(),
@@ -192,8 +192,6 @@ impl DnjParser {
 
 #[cfg(test)]
 mod tests {
-    use pest::error::ErrorVariant::ParsingError;
-
     use super::*;
 
     #[test]

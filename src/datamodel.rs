@@ -1,11 +1,9 @@
-use clap::builder::FalseyValueParser;
-
-use crate::{datamodel::Error::ResolvError, immap::ImMap};
-use std::rc::Rc;
+use crate::{datamodel::Error::ScopeError, immap::ImMap};
+use std::{fmt::Display, rc::Rc};
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
-    ResolvError(String),
+    ScopeError(String, Scope),
     DupKey(String),
 }
 
@@ -32,18 +30,38 @@ pub enum Expr {
     BoundExpr(Scope, Rc<Expr>),
 }
 
-impl ToString for Expr {
-    fn to_string(&self) -> String {
+impl Display for Expr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Expr::Object(..) => "Object".into(),
-            Expr::Int(..) => "Int".into(),
-            Expr::String(..) => "String".into(),
-            Expr::Var(..) => "Var".into(),
-            Expr::FuncDefIdent(..) => "FuncDefIdent".into(),
-            Expr::FuncDefPattern(..) => "FuncDefPattern".into(),
-            Expr::Let(..) => "Let".into(),
-            Expr::FuncCall(..) => "FuncCall".into(),
-            Expr::BoundExpr(..) => "BoundExpr".into(),
+            Expr::Object(im_map) => im_map.fmt(f),
+            Expr::Int(val) => val.fmt(f),
+            Expr::String(val) => write!(f, "{:?}", val),
+            Expr::Var(val) => val.fmt(f),
+            Expr::FuncDefIdent(name, expr) => write!(f, "{}: {}", name, expr),
+            Expr::FuncDefPattern(items, expr) => {
+                f.write_str("{")?;
+                for item in items {
+                    item.fmt(f)?;
+                    f.write_str(", ")?;
+                }
+                f.write_str("...}: ")?;
+                expr.fmt(f)?;
+                Ok(())
+            }
+            Expr::Let(items, expr) => {
+                f.write_str("let ")?;
+                for (var_name, var_expr) in items {
+                    var_name.fmt(f)?;
+                    f.write_str("=")?;
+                    var_expr.fmt(f)?;
+                    f.write_str("; ")?;
+                }
+                f.write_str("in ")?;
+                expr.fmt(f)?;
+                Ok(())
+            }
+            Expr::FuncCall(name, expr) => write!(f, "{} {}", name, expr),
+            Expr::BoundExpr(scope, expr) => write!(f, "[ {} @ {} ]", scope, expr),
         }
     }
 }
@@ -51,6 +69,12 @@ impl ToString for Expr {
 #[derive(Debug, Clone)]
 pub struct Scope {
     vars: ImMap<Rc<Expr>>,
+}
+
+impl Display for Scope {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.vars.fmt(f)
+    }
 }
 
 impl PartialEq for Scope {
@@ -83,16 +107,19 @@ impl Scope {
             Expr::Let(fields, target_expr) => {
                 let mut vars: ImMap<Rc<Expr>> = self.vars.clone();
                 for (field_name, field_expr) in fields {
-                    vars = vars.set_inplace(field_name.clone(), field_expr.clone())?;
+                    let var_scope: Scope = vars.clone().into();
+                    vars =
+                        vars.set(field_name.clone(), var_scope.bind(field_expr.clone()))?;
                 }
-                Ok(Expr::BoundExpr(vars.into(), target_expr.clone()).into())
+                let var_scope: Scope = vars.into();
+                Ok(var_scope.bind(target_expr.clone()))
             }
             Expr::BoundExpr(bound_scope, bound_expr) => match bound_expr.as_ref() {
                 Expr::Object(im_map) => {
                     Ok(Expr::Object(im_map.map(|val| bound_scope.bind(val.clone()).into())).into())
                 }
                 Expr::FuncDefIdent(arg_name, func_expr) => {
-                    let new_scope: Scope = bound_scope.vars.unset(arg_name.as_str()).into();
+                    let new_scope: Scope = bound_scope.vars.clone().unset(arg_name.as_str()).into();
                     Ok(Expr::FuncDefIdent(
                         arg_name.clone(),
                         new_scope.bind(func_expr.clone()).into(),
@@ -102,7 +129,7 @@ impl Scope {
                 Expr::FuncDefPattern(items, expr) => {
                     let mut new_scope = bound_scope.clone();
                     for item in items {
-                        new_scope.vars = new_scope.vars.unset_inplace(item);
+                        new_scope.vars = new_scope.vars.unset(item);
                     }
                     Ok(
                         Expr::FuncDefPattern(items.clone(), new_scope.bind(expr.clone()).into())
@@ -113,45 +140,58 @@ impl Scope {
             },
             Expr::Var(name) => match self.vars.get(name) {
                 Some(value) => Ok(value),
-                None => Err(Error::ResolvError(format!("Unknown variable {}", name))),
+                None => Err(Error::ScopeError(
+                    format!("Unknown variable {}", name),
+                    self.clone(),
+                )),
             },
             Expr::FuncCall(func_name, arg_expr) => match self.vars.get(func_name) {
-                Some(func) => match func.as_ref() {
-                    Expr::FuncDefIdent(arg_name, func_expr) => {
-                        let new_scope: Scope =
-                            ImMap::single(arg_name.clone(), self.bind(arg_expr.clone())).into();
-                        Ok(new_scope.bind(func_expr.clone()))
-                    }
-                    Expr::FuncDefPattern(arg_names, func_expr) => {
-                        let mut new_vars = ImMap::new();
-                        for arg_name in arg_names {
-                            let arg_value = self.get_item(arg_expr.clone(), arg_name)?;
-                            new_vars = new_vars.set_inplace(arg_name.clone(), arg_value)?;
+                Some(func) => {
+                    let func = self.resolve(func)?;
+                    let (args, func_expr) = match func.as_ref() {
+                        Expr::FuncDefIdent(arg_name, func_expr) => Ok((
+                            ImMap::single(arg_name.clone(), self.bind(arg_expr.clone())),
+                            func_expr,
+                        )),
+                        Expr::FuncDefPattern(arg_names, func_expr) => {
+                            let mut new_vars = ImMap::new();
+                            for arg_name in arg_names {
+                                let arg_value = self.get_item(arg_expr.clone(), arg_name)?;
+                                new_vars = new_vars.set(arg_name.clone(), arg_value)?;
+                            }
+                            Ok((new_vars, func_expr))
                         }
-                        // TODO: How to handle extra arguments?
-                        let new_scope: Scope = new_vars.into();
-                        Ok(new_scope.bind(func_expr.clone()))
+                        _ => Err(Error::ScopeError(
+                            format!("called {}, which is a {}", func_name, func.to_string()),
+                            self.clone(),
+                        )),
+                    }?;
+
+                    // If function contains a bound scope, it should still apply,
+                    // and not overwrite input arguments.
+                    match func_expr.as_ref() {
+                        Expr::BoundExpr(bound_scope, inner_expr) => {
+                            let new_scope: Scope = bound_scope.vars.clone().merge(&args).into();
+                            Ok(new_scope.bind(inner_expr.clone()))
+                        }
+                        _ => Ok(Expr::BoundExpr(args.into(), func_expr.clone()).into()),
                     }
-                    _ => Err(Error::ResolvError(format!(
-                        "called {}, which is a {}",
-                        func_name,
-                        func.to_string()
-                    ))),
-                },
-                None => Err(Error::ResolvError(format!(
-                    "Unknown function name '{}'",
-                    func_name
-                ))),
+                }
+                None => Err(Error::ScopeError(
+                    format!("Unknown function name '{}'", func_name),
+                    self.clone(),
+                )),
             },
-            _ => Err(ResolvError(format!(
-                "Resolving invalid type {}",
-                expr.to_string()
-            ))),
+            _ => Err(ScopeError(
+                format!("Resolving invalid type {}", expr.to_string()),
+                self.clone(),
+            )),
         }
     }
 
     pub fn resolve(&self, expr: Rc<Expr>) -> Result<Rc<Expr>> {
-        if match expr.as_ref() {
+        let mut expr = expr;
+        while match expr.as_ref() {
             Expr::Object(..) => false,
             Expr::Int(..) => false,
             Expr::String(..) => false,
@@ -162,9 +202,18 @@ impl Scope {
             Expr::FuncCall(..) => true,
             Expr::BoundExpr(..) => true,
         } {
-            self.resolve(self.resolve_once(expr)?)
-        } else {
-            Ok(expr)
+            expr = self.resolve_once(expr)?;
+        }
+        Ok(expr)
+    }
+
+    pub fn eval(&self, expr: Rc<Expr>) -> Result<Rc<Expr>> {
+        let res = self.resolve(expr)?;
+        match res.as_ref() {
+            Expr::Object(im_map) => {
+                Ok(Expr::Object(im_map.map(|e| self.eval(e.clone()).unwrap())).into())
+            }
+            _ => Ok(res),
         }
     }
 
@@ -178,14 +227,16 @@ impl Scope {
             Expr::Object(fields) => {
                 let field = fields
                     .get(item)
-                    .ok_or_else(|| Error::ResolvError("field not found".into()))?;
+                    .ok_or_else(|| Error::ScopeError("field not found".into(), self.clone()))?;
                 Ok(field.clone())
             }
-            _ => Err(Error::ResolvError("get_item resolving".into())),
+            _ => Err(Error::ScopeError("get_item resolving".into(), self.clone())),
         }?;
         self.resolve(out)
     }
 
+    // Currently only used for testing
+    #[cfg(test)]
     pub fn get_path<'a>(
         &self,
         expr: Rc<Expr>,
@@ -196,12 +247,12 @@ impl Scope {
             cur = self.resolve(cur)?;
             cur = match cur.as_ref() {
                 Expr::Object(fields) => {
-                    let field = fields
-                        .get(item)
-                        .ok_or_else(|| Error::ResolvError("field not found".into()))?;
+                    let field = fields.get(item).ok_or_else(|| {
+                        Error::ScopeError(format!("field {} not found", item), self.clone())
+                    })?;
                     Ok(field.clone())
                 }
-                _ => Err(Error::ResolvError("get_item resolving".into())),
+                _ => Err(Error::ScopeError("get_path resolving".into(), self.clone())),
             }?;
         }
         cur = self.resolve(cur)?;
@@ -223,8 +274,14 @@ mod tests {
         };
     }
 
+    fn eval(code: &str) -> Rc<Expr> {
+        Scope::new()
+            .eval(DnjParser::parse_str(code).unwrap())
+            .unwrap()
+    }
+
     #[test]
-    fn test_eval() {
+    fn test_resolve() {
         let expr = DnjParser::parse_str(
             r#"
                 {
@@ -240,7 +297,7 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_deep() {
+    fn test_resolve_deep() {
         // This also tests "inner" as prefixed for reserved keyword "in" is ok
         let expr = DnjParser::parse_str(
             r#"
@@ -286,11 +343,11 @@ mod tests {
         )
         .unwrap();
         let scope = Scope::default();
-        let value = scope.resolve(expr).unwrap_err();
-        assert_eq!(
-            value,
-            Error::ResolvError("Unknown variable invalid_var".into())
-        );
+        if let Error::ScopeError(message, _) = scope.resolve(expr).unwrap_err() {
+            assert_eq!(message.as_str(), "Unknown variable invalid_var");
+        } else {
+            assert!(false);
+        }
     }
 
     #[test]
@@ -302,6 +359,23 @@ mod tests {
                 in
                 {
                     stuff = a;
+                }
+            "#,
+            vec!["stuff"],
+            Expr::Int(12)
+        }
+    }
+
+    #[test]
+    fn test_let_set_var_seq() {
+        assert_dnj_value! {
+            r#"
+                let
+                    a = 12;
+                    b = a;
+                in
+                {
+                    stuff = b;
                 }
             "#,
             vec!["stuff"],
@@ -355,6 +429,25 @@ mod tests {
     }
 
     #[test]
+    fn test_func_call_bound() {
+        assert_dnj_value! {
+            r#"
+                let
+                    a = 12;
+                    func = test: {
+                        var = a;
+                    };
+                in
+                {
+                    stuff = func 77;
+                }
+            "#,
+            vec!["stuff", "var"],
+            Expr::Int(12)
+        }
+    }
+
+    #[test]
     fn test_func_call_resolved_stacked_let() {
         assert_dnj_value! {
             r#"
@@ -395,6 +488,25 @@ mod tests {
             "#,
             vec!["stuff", "var"],
             Expr::Int(74)
+        }
+    }
+
+    #[test]
+    fn test_eval() {
+        assert_eq! {
+            eval(r#"
+                let
+                    a = 12;
+                    b = { inner = 43; };
+                    myfunc = {target, ...}: { var = b; };
+                in
+                {
+                    app = myfunc {
+                        target = "app.elf";
+                    };
+                }
+            "#),
+            eval("{ app = { var = { inner = 43; }; }; }"),
         }
     }
 }
