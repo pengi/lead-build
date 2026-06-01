@@ -1,4 +1,7 @@
-use crate::{datamodel::Error::ScopeError, immap::ImMap};
+use crate::{
+    datamodel::Error::ScopeError,
+    expr::{Expr, ExprSet},
+};
 use std::{fmt::Display, rc::Rc};
 
 #[derive(Debug, PartialEq)]
@@ -17,58 +20,9 @@ impl From<crate::immap::Error> for Error {
 
 type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, PartialEq)]
-pub enum Expr {
-    Object(ImMap<Rc<Expr>>),
-    Int(i64),
-    String(String),
-    Var(String),
-    FuncDefIdent(String, Rc<Expr>),
-    FuncDefPattern(Vec<String>, Rc<Expr>),
-    Let(Vec<(String, Rc<Expr>)>, Rc<Expr>),
-    FuncCall(String, Rc<Expr>),
-    BoundExpr(Scope, Rc<Expr>),
-}
-
-impl Display for Expr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Expr::Object(im_map) => im_map.fmt(f),
-            Expr::Int(val) => val.fmt(f),
-            Expr::String(val) => write!(f, "{:?}", val),
-            Expr::Var(val) => val.fmt(f),
-            Expr::FuncDefIdent(name, expr) => write!(f, "{}: {}", name, expr),
-            Expr::FuncDefPattern(items, expr) => {
-                f.write_str("{")?;
-                for item in items {
-                    item.fmt(f)?;
-                    f.write_str(", ")?;
-                }
-                f.write_str("...}: ")?;
-                expr.fmt(f)?;
-                Ok(())
-            }
-            Expr::Let(items, expr) => {
-                f.write_str("let ")?;
-                for (var_name, var_expr) in items {
-                    var_name.fmt(f)?;
-                    f.write_str("=")?;
-                    var_expr.fmt(f)?;
-                    f.write_str("; ")?;
-                }
-                f.write_str("in ")?;
-                expr.fmt(f)?;
-                Ok(())
-            }
-            Expr::FuncCall(name, expr) => write!(f, "{} {}", name, expr),
-            Expr::BoundExpr(scope, expr) => write!(f, "[ {} @ {} ]", scope, expr),
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct Scope {
-    vars: ImMap<Rc<Expr>>,
+    vars: ExprSet,
 }
 
 impl Display for Scope {
@@ -91,52 +45,55 @@ impl Default for Scope {
     }
 }
 
-impl From<ImMap<Rc<Expr>>> for Scope {
-    fn from(vars: ImMap<Rc<Expr>>) -> Self {
+impl From<ExprSet> for Scope {
+    fn from(vars: ExprSet) -> Self {
         Self { vars }
     }
 }
 
 impl Scope {
     pub fn new() -> Scope {
-        Scope { vars: ImMap::new() }
+        Scope {
+            vars: ExprSet::new(),
+        }
     }
 
     fn resolve_once(&self, expr: Rc<Expr>) -> Result<Rc<Expr>> {
         match expr.as_ref() {
             Expr::Let(fields, target_expr) => {
-                let mut vars: ImMap<Rc<Expr>> = self.vars.clone();
+                let mut vars: ExprSet = self.vars.clone();
                 for (field_name, field_expr) in fields {
                     let var_scope: Scope = vars.clone().into();
-                    vars =
-                        vars.set(field_name.clone(), var_scope.bind(field_expr.clone()))?;
+                    vars = vars.set(field_name.clone(), var_scope.bind(field_expr.clone()))?;
                 }
                 let var_scope: Scope = vars.into();
                 Ok(var_scope.bind(target_expr.clone()))
             }
-            Expr::BoundExpr(bound_scope, bound_expr) => match bound_expr.as_ref() {
-                Expr::Object(im_map) => {
-                    Ok(Expr::Object(im_map.map(|val| bound_scope.bind(val.clone()).into())).into())
-                }
+            Expr::BoundExpr(varspace, bound_expr) => match bound_expr.as_ref() {
+                Expr::Object(fields) => Ok(Expr::Object(
+                    fields.map(|val| Expr::BoundExpr(varspace.clone(), val.clone()).into()),
+                )
+                .into()),
                 Expr::FuncDefIdent(arg_name, func_expr) => {
-                    let new_scope: Scope = bound_scope.vars.clone().unset(arg_name.as_str()).into();
+                    let new_scope = varspace.clone().unset(arg_name.as_str());
                     Ok(Expr::FuncDefIdent(
                         arg_name.clone(),
-                        new_scope.bind(func_expr.clone()).into(),
+                        Expr::BoundExpr(new_scope, func_expr.clone()).into(),
                     )
                     .into())
                 }
                 Expr::FuncDefPattern(items, expr) => {
-                    let mut new_scope = bound_scope.clone();
+                    let mut new_scope = varspace.clone();
                     for item in items {
-                        new_scope.vars = new_scope.vars.unset(item);
+                        new_scope = new_scope.unset(item);
                     }
-                    Ok(
-                        Expr::FuncDefPattern(items.clone(), new_scope.bind(expr.clone()).into())
-                            .into(),
+                    Ok(Expr::FuncDefPattern(
+                        items.clone(),
+                        Expr::BoundExpr(new_scope, expr.clone()).into(),
                     )
+                    .into())
                 }
-                _ => bound_scope.resolve(bound_expr.clone()),
+                _ => Scope::from(varspace.clone()).resolve(bound_expr.clone()),
             },
             Expr::Var(name) => match self.vars.get(name) {
                 Some(value) => Ok(value),
@@ -150,11 +107,11 @@ impl Scope {
                     let func = self.resolve(func)?;
                     let (args, func_expr) = match func.as_ref() {
                         Expr::FuncDefIdent(arg_name, func_expr) => Ok((
-                            ImMap::single(arg_name.clone(), self.bind(arg_expr.clone())),
+                            ExprSet::single(arg_name.clone(), self.bind(arg_expr.clone())),
                             func_expr,
                         )),
                         Expr::FuncDefPattern(arg_names, func_expr) => {
-                            let mut new_vars = ImMap::new();
+                            let mut new_vars = ExprSet::new();
                             for arg_name in arg_names {
                                 let arg_value = self.get_item(arg_expr.clone(), arg_name)?;
                                 new_vars = new_vars.set(arg_name.clone(), arg_value)?;
@@ -170,8 +127,8 @@ impl Scope {
                     // If function contains a bound scope, it should still apply,
                     // and not overwrite input arguments.
                     match func_expr.as_ref() {
-                        Expr::BoundExpr(bound_scope, inner_expr) => {
-                            let new_scope: Scope = bound_scope.vars.clone().merge(&args).into();
+                        Expr::BoundExpr(varspace, inner_expr) => {
+                            let new_scope: Scope = varspace.clone().merge(&args).into();
                             Ok(new_scope.bind(inner_expr.clone()))
                         }
                         _ => Ok(Expr::BoundExpr(args.into(), func_expr.clone()).into()),
@@ -218,7 +175,7 @@ impl Scope {
     }
 
     fn bind(&self, expr: Rc<Expr>) -> Rc<Expr> {
-        Expr::BoundExpr(self.clone(), expr).into()
+        Expr::BoundExpr(self.vars.clone(), expr).into()
     }
 
     pub fn get_item(&self, expr: Rc<Expr>, item: &str) -> Result<Rc<Expr>> {
@@ -389,7 +346,7 @@ mod tests {
         let func_b = DnjParser::parse_str("var: 42").unwrap();
         let call = DnjParser::parse_str("func_b 32").unwrap();
         let scope: Scope =
-            ImMap::from(vec![("func_a".into(), func_a), ("func_b".into(), func_b)].into_iter())
+            ExprSet::from(vec![("func_a".into(), func_a), ("func_b".into(), func_b)].into_iter())
                 .unwrap()
                 .into();
         let value = scope.resolve(call).unwrap();
@@ -402,7 +359,7 @@ mod tests {
         let arg_var = DnjParser::parse_str("32").unwrap();
         let call = DnjParser::parse_str("func arg").unwrap();
         let scope: Scope =
-            ImMap::from(vec![("func".into(), func_var), ("arg".into(), arg_var)].into_iter())
+            ExprSet::from(vec![("func".into(), func_var), ("arg".into(), arg_var)].into_iter())
                 .unwrap()
                 .into();
         let value = scope.resolve(call).unwrap();
