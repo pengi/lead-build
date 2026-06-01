@@ -1,4 +1,3 @@
-pub mod datamodel;
 pub mod error;
 pub mod expr;
 mod grammar;
@@ -9,9 +8,7 @@ use error::Result;
 use grammar::DnjParser;
 use std::{path::PathBuf, process::exit};
 
-use datamodel::Scope;
-
-use crate::expr::{Expr, ExprSet, ExprType};
+use crate::expr::{Expr, ExprSet};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -22,11 +19,9 @@ struct Args {
 }
 
 fn run(args: Args) -> Result<()> {
-    let expr: Expr = DnjParser::parse_file(args.input)?;
-    let wrapped: Expr = ExprType::BoundExpr(ExprSet::new(), expr).into();
-    let scope = Scope::new();
-    println!("input: {:#}", wrapped);
-    let resolved = scope.eval(wrapped).unwrap();
+    let expr: Expr = DnjParser::parse_file(args.input)?.bind(ExprSet::new());
+    println!("input: {:#}", expr);
+    let resolved = expr.eval().unwrap();
     println!("output: {:#}", resolved);
     Ok(())
 }
