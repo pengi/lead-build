@@ -11,7 +11,7 @@ use std::{path::PathBuf, process::exit};
 
 use datamodel::Scope;
 
-use crate::expr::{Expr, ExprSet};
+use crate::expr::{Expr, ExprSet, ExprType};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -22,8 +22,8 @@ struct Args {
 }
 
 fn run(args: Args) -> Result<()> {
-    let expr = DnjParser::parse_file(args.input)?;
-    let wrapped = Expr::BoundExpr(ExprSet::new(), expr).into();
+    let expr: Expr = DnjParser::parse_file(args.input)?;
+    let wrapped: Expr = ExprType::BoundExpr(ExprSet::new(), expr).into();
     let scope = Scope::new();
     println!("input: {:#}", wrapped);
     let resolved = scope.eval(wrapped).unwrap();

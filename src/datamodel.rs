@@ -1,5 +1,4 @@
-use crate::expr::{Expr, ExprSet};
-use std::rc::Rc;
+use crate::expr::{Expr, ExprSet, ExprType};
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
@@ -40,62 +39,62 @@ impl Scope {
         Scope()
     }
 
-    fn resolve_once(&self, expr: Rc<Expr>) -> Result<Rc<Expr>> {
-        match expr.as_ref() {
-            Expr::BoundExpr(varspace, bound_expr) => match bound_expr.as_ref() {
-                Expr::Object(fields) => Ok(Expr::Object(
-                    fields.map(|val| Expr::BoundExpr(varspace.clone(), val.clone()).into()),
+    fn resolve_once(&self, expr: Expr) -> Result<Expr> {
+        match expr.0.as_ref() {
+            ExprType::BoundExpr(varspace, bound_expr) => match bound_expr.0.as_ref() {
+                ExprType::Object(fields) => Ok(ExprType::Object(
+                    fields.map(|val| ExprType::BoundExpr(varspace.clone(), val.clone()).into()),
                 )
                 .into()),
-                Expr::Let(fields, target_expr) => {
+                ExprType::Let(fields, target_expr) => {
                     let mut vars: ExprSet = varspace.clone();
                     for (field_name, field_expr) in fields {
                         let field_vars = vars.clone();
                         vars = vars.set(
                             field_name.clone(),
-                            Expr::BoundExpr(field_vars, field_expr.clone()).into(),
+                            ExprType::BoundExpr(field_vars, field_expr.clone()).into(),
                         )?;
                     }
-                    Ok(Expr::BoundExpr(vars, target_expr.clone()).into())
+                    Ok(ExprType::BoundExpr(vars, target_expr.clone()).into())
                 }
-                Expr::FuncDefIdent(arg_name, func_expr) => {
+                ExprType::FuncDefIdent(arg_name, func_expr) => {
                     let new_scope = varspace.clone().unset(arg_name.as_str());
-                    Ok(Expr::FuncDefIdent(
+                    Ok(ExprType::FuncDefIdent(
                         arg_name.clone(),
-                        Expr::BoundExpr(new_scope, func_expr.clone()).into(),
+                        ExprType::BoundExpr(new_scope, func_expr.clone()).into(),
                     )
                     .into())
                 }
-                Expr::FuncDefPattern(items, expr) => {
+                ExprType::FuncDefPattern(items, expr) => {
                     let mut new_scope = varspace.clone();
                     for item in items {
                         new_scope = new_scope.unset(item);
                     }
-                    Ok(Expr::FuncDefPattern(
+                    Ok(ExprType::FuncDefPattern(
                         items.clone(),
-                        Expr::BoundExpr(new_scope, expr.clone()).into(),
+                        ExprType::BoundExpr(new_scope, expr.clone()).into(),
                     )
                     .into())
                 }
-                Expr::Var(name) => match varspace.get(name) {
+                ExprType::Var(name) => match varspace.get(name) {
                     Some(value) => Ok(value),
                     None => Err(Error::ScopeError(
                         format!("Unknown variable {}", name),
                         varspace.clone(),
                     )),
                 },
-                Expr::FuncCall(func_name, arg_expr) => match varspace.get(func_name) {
+                ExprType::FuncCall(func_name, arg_expr) => match varspace.get(func_name) {
                     Some(func) => {
                         let func = self.resolve(func)?; // TODO: wrong scope
-                        let (args, func_expr) = match func.as_ref() {
-                            Expr::FuncDefIdent(arg_name, func_expr) => Ok((
+                        let (args, func_expr) = match func.0.as_ref() {
+                            ExprType::FuncDefIdent(arg_name, func_expr) => Ok((
                                 ExprSet::single(
                                     arg_name.clone(),
-                                    Expr::BoundExpr(varspace.clone(), arg_expr.clone()).into(),
+                                    ExprType::BoundExpr(varspace.clone(), arg_expr.clone()).into(),
                                 ),
                                 func_expr,
                             )),
-                            Expr::FuncDefPattern(arg_names, func_expr) => {
+                            ExprType::FuncDefPattern(arg_names, func_expr) => {
                                 let arg_expr = self.resolve(arg_expr.clone())?;
 
                                 let mut new_vars = ExprSet::new();
@@ -122,13 +121,13 @@ impl Scope {
 
                         // If function contains a bound scope, it should still apply,
                         // and not overwrite input arguments.
-                        match func_expr.as_ref() {
-                            Expr::BoundExpr(varspace, inner_expr) => Ok(Expr::BoundExpr(
+                        match func_expr.0.as_ref() {
+                            ExprType::BoundExpr(varspace, inner_expr) => Ok(ExprType::BoundExpr(
                                 varspace.clone().merge(&args),
                                 inner_expr.clone(),
                             )
                             .into()),
-                            _ => Ok(Expr::BoundExpr(args.into(), func_expr.clone()).into()),
+                            _ => Ok(ExprType::BoundExpr(args.into(), func_expr.clone()).into()),
                         }
                     }
                     None => Err(Error::ScopeError(
@@ -136,9 +135,9 @@ impl Scope {
                         varspace.clone(),
                     )),
                 },
-                Expr::Int(..) => Ok(bound_expr.clone()),
-                Expr::String(..) => Ok(bound_expr.clone()),
-                Expr::BoundExpr(_inner_vars, _expr) => todo!(),
+                ExprType::Int(..) => Ok(bound_expr.clone()),
+                ExprType::String(..) => Ok(bound_expr.clone()),
+                ExprType::BoundExpr(_inner_vars, _expr) => todo!(),
             },
             _ => Err(Error::EvalError(format!(
                 "Resolving unresolvable type {}",
@@ -147,29 +146,29 @@ impl Scope {
         }
     }
 
-    pub fn resolve(&self, expr: Rc<Expr>) -> Result<Rc<Expr>> {
+    pub fn resolve(&self, expr: Expr) -> Result<Expr> {
         let mut expr = expr;
-        while match expr.as_ref() {
-            Expr::Object(..) => false,
-            Expr::Int(..) => false,
-            Expr::String(..) => false,
-            Expr::Var(..) => true,
-            Expr::FuncDefIdent(..) => false,
-            Expr::FuncDefPattern(..) => false,
-            Expr::Let(..) => true,
-            Expr::FuncCall(..) => true,
-            Expr::BoundExpr(..) => true,
+        while match expr.0.as_ref() {
+            ExprType::Object(..) => false,
+            ExprType::Int(..) => false,
+            ExprType::String(..) => false,
+            ExprType::Var(..) => true,
+            ExprType::FuncDefIdent(..) => false,
+            ExprType::FuncDefPattern(..) => false,
+            ExprType::Let(..) => true,
+            ExprType::FuncCall(..) => true,
+            ExprType::BoundExpr(..) => true,
         } {
             expr = self.resolve_once(expr)?;
         }
         Ok(expr)
     }
 
-    pub fn eval(&self, expr: Rc<Expr>) -> Result<Rc<Expr>> {
+    pub fn eval(&self, expr: Expr) -> Result<Expr> {
         let res = self.resolve(expr)?;
-        match res.as_ref() {
-            Expr::Object(im_map) => {
-                Ok(Expr::Object(im_map.map(|e| self.eval(e.clone()).unwrap())).into())
+        match res.0.as_ref() {
+            ExprType::Object(im_map) => {
+                Ok(ExprType::Object(im_map.map(|e| self.eval(e.clone()).unwrap())).into())
             }
             _ => Ok(res),
         }
@@ -181,9 +180,9 @@ mod tests {
     use super::*;
     use crate::grammar::DnjParser;
 
-    fn eval(code: &str) -> Rc<Expr> {
-        let expr = DnjParser::parse_str(code).unwrap();
-        let wrapped = Expr::BoundExpr(ExprSet::new(), expr);
+    fn eval(code: &str) -> Expr {
+        let expr: Expr = DnjParser::parse_str(code).unwrap();
+        let wrapped: Expr = ExprType::BoundExpr(ExprSet::new(), expr).into();
         Scope::new().eval(wrapped.into()).unwrap()
     }
 
@@ -199,7 +198,7 @@ mod tests {
         )
         .unwrap();
         let value = expr.get_item("stuff").unwrap();
-        assert_eq!(*value, Expr::String("hello".into()));
+        assert_eq!(*value.0, ExprType::String("hello".into()));
     }
 
     #[test]
@@ -221,7 +220,7 @@ mod tests {
             .unwrap()
             .get_item("inner")
             .unwrap();
-        assert_eq!(*value, Expr::String("deep".into()));
+        assert_eq!(*value.0, ExprType::String("deep".into()));
     }
 
     #[test]
@@ -236,10 +235,10 @@ mod tests {
             "#,
         )
         .unwrap();
-        let wrapped = Expr::BoundExpr(ExprSet::new(), expr).into();
+        let wrapped = ExprType::BoundExpr(ExprSet::new(), expr).into();
         let scope = Scope::default();
         let value = scope.resolve(wrapped).unwrap();
-        assert_eq!(*value, Expr::String("hello".into()));
+        assert_eq!(*value.0, ExprType::String("hello".into()));
     }
 
     #[test]
@@ -250,7 +249,7 @@ mod tests {
             "#,
         )
         .unwrap();
-        let wrapped = Expr::BoundExpr(ExprSet::new(), expr).into();
+        let wrapped = ExprType::BoundExpr(ExprSet::new(), expr).into();
         let scope = Scope::default();
         if let Error::ScopeError(message, _) = scope.resolve(wrapped).unwrap_err() {
             assert_eq!(message.as_str(), "Unknown variable invalid_var");
@@ -298,9 +297,9 @@ mod tests {
         let varscope =
             ExprSet::from(vec![("func_a".into(), func_a), ("func_b".into(), func_b)].into_iter())
                 .unwrap();
-        let wrapped = Expr::BoundExpr(varscope, call).into();
-        let value: Rc<Expr> = Scope::new().resolve(wrapped).unwrap();
-        assert_eq!(*value, Expr::Int(42));
+        let wrapped = ExprType::BoundExpr(varscope, call).into();
+        let value: Expr = Scope::new().resolve(wrapped).unwrap();
+        assert_eq!(*value.0, ExprType::Int(42));
     }
 
     #[test]
@@ -311,9 +310,9 @@ mod tests {
         let varscope =
             ExprSet::from(vec![("func".into(), func_var), ("arg".into(), arg_var)].into_iter())
                 .unwrap();
-        let wrapped = Expr::BoundExpr(varscope, call).into();
-        let value: Rc<Expr> = Scope::new().resolve(wrapped).unwrap();
-        assert_eq!(*value, Expr::Int(32));
+        let wrapped = ExprType::BoundExpr(varscope, call).into();
+        let value: Expr = Scope::new().resolve(wrapped).unwrap();
+        assert_eq!(*value.0, ExprType::Int(32));
     }
 
     #[test]
