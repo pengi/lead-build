@@ -64,6 +64,15 @@ where
     }
 }
 
+impl<T> From<T> for Expr<T>
+where
+    T: Clone + PartialEq + Display,
+{
+    fn from(value: T) -> Self {
+        Expr(ExprType::Value(value).into())
+    }
+}
+
 impl<T> Display for ExprType<T>
 where
     T: Clone + PartialEq + Display,
@@ -263,35 +272,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::grammar::{DnjParser, ParsableValue};
+    use crate::parser::parse_str;
+    use crate::value::Value;
 
-    #[derive(PartialEq, Clone, Debug)]
-    enum TestValue {
-        Int(i64),
-        String(String),
-    }
-
-    impl Display for TestValue {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            match self {
-                TestValue::Int(v) => std::fmt::Display::fmt(v, f),
-                TestValue::String(v) => std::fmt::Display::fmt(v, f),
-            }
-        }
-    }
-
-    impl ParsableValue for TestValue {
-        fn parse_int(value: impl ToString) -> Option<Self> {
-            Some(TestValue::Int(value.to_string().parse().unwrap()))
-        }
-
-        fn parse_string(value: impl ToString) -> Option<Self> {
-            Some(TestValue::String(value.to_string()))
-        }
-    }
-
-    fn eval(code: &str) -> Expr<TestValue> {
-        DnjParser::parse_str(code)
+    fn eval(code: &str) -> Expr<Value> {
+        parse_str(code)
             .unwrap()
             .bind(ExprSet::new())
             .eval()
@@ -300,7 +285,7 @@ mod tests {
 
     #[test]
     fn test_resolve() {
-        let expr: Expr<TestValue> = DnjParser::parse_str(
+        let expr: Expr<Value> = parse_str(
             r#"
                 {
                     stuff = "hello";
@@ -310,13 +295,13 @@ mod tests {
         )
         .unwrap();
         let value = expr.get_item("stuff").unwrap();
-        assert_eq!(*value.0, ExprType::Value(TestValue::String("hello".into())));
+        assert_eq!(*value.0, ExprType::Value(Value::String("hello".into())));
     }
 
     #[test]
     fn test_resolve_deep() {
         // This also tests "inner" as prefixed for reserved keyword "in" is ok
-        let expr = DnjParser::parse_str(
+        let expr = parse_str(
             r#"
                 {
                     stuff = "hello";
@@ -332,12 +317,12 @@ mod tests {
             .unwrap()
             .get_item("inner")
             .unwrap();
-        assert_eq!(*value.0, ExprType::Value(TestValue::Int(55)));
+        assert_eq!(*value.0, ExprType::Value(Value::Int(55)));
     }
 
     #[test]
     fn test_let() {
-        let value = DnjParser::parse_str(
+        let value = parse_str(
             r#"
                 let
                     a = 12;
@@ -350,12 +335,12 @@ mod tests {
         .bind(ExprSet::new())
         .resolve()
         .unwrap();
-        assert_eq!(*value.0, ExprType::Value(TestValue::Int(75)));
+        assert_eq!(*value.0, ExprType::Value(Value::Int(75)));
     }
 
     #[test]
     fn test_invalid_var() {
-        let expr: Expr<TestValue> = DnjParser::parse_str(
+        let expr: Expr<Value> = parse_str(
             r#"
                 invalid_var
             "#,
@@ -402,26 +387,22 @@ mod tests {
 
     #[test]
     fn test_func_call() {
-        let func_a = DnjParser::parse_str("var: 13").unwrap();
-        let func_b = DnjParser::parse_str("var: 42").unwrap();
-        let call = DnjParser::parse_str("func_b 32").unwrap();
-        let varscope =
-            ExprSet::from(vec![("func_a", func_a), ("func_b", func_b)])
-                .unwrap();
-        let value: Expr<TestValue> = call.bind(varscope).resolve().unwrap();
-        assert_eq!(*value.0, ExprType::Value(TestValue::Int(42)));
+        let func_a = parse_str("var: 13").unwrap();
+        let func_b = parse_str("var: 42").unwrap();
+        let call = parse_str("func_b 32").unwrap();
+        let varscope = ExprSet::from(vec![("func_a", func_a), ("func_b", func_b)]).unwrap();
+        let value: Expr<Value> = call.bind(varscope).resolve().unwrap();
+        assert_eq!(*value.0, ExprType::Value(Value::Int(42)));
     }
 
     #[test]
     fn test_func_call_var_arg() {
-        let func_var = DnjParser::parse_str("var: var").unwrap();
-        let arg_var = DnjParser::parse_str("32").unwrap();
-        let call = DnjParser::parse_str("func arg").unwrap();
-        let varscope =
-            ExprSet::from(vec![("func", func_var), ("arg", arg_var)])
-                .unwrap();
-        let value: Expr<TestValue> = call.bind(varscope).resolve().unwrap();
-        assert_eq!(*value.0, ExprType::Value(TestValue::Int(32)));
+        let func_var = parse_str("var: var").unwrap();
+        let arg_var = parse_str("32").unwrap();
+        let call = parse_str("func arg").unwrap();
+        let varscope = ExprSet::from(vec![("func", func_var), ("arg", arg_var)]).unwrap();
+        let value: Expr<Value> = call.bind(varscope).resolve().unwrap();
+        assert_eq!(*value.0, ExprType::Value(Value::Int(32)));
     }
 
     #[test]

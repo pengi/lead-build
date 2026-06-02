@@ -9,6 +9,6 @@ pub enum DnjError {
     #[error("IO Error: {0}")]
     Io(#[from] std::io::Error),
 
-    #[error("Parse Error:\n{0}")]
-    DnjPest(#[from] crate::grammar::Error),
+    #[error("Parse error: {0}")]
+    ParseError(String),
 }

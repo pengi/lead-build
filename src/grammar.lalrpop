@@ -1,0 +1,45 @@
+use super::{Ex, ExT, ExSet, unpack_str, unpack_int};
+
+grammar;
+
+pub Expr: Ex = {
+    <Expr1>,
+};
+
+Expr1: Ex = {
+
+    Expr2,
+}
+
+Expr2: Ex = {
+    <i:Ident> <e:Expr> => ExT::FuncCall(i, e).into(),
+    ExprTerm,
+}
+
+ExprTerm: Ex = {
+    <Object>,
+    <Value>,
+    <FuncDef>,
+    <Let>,
+    <Variable>,
+}
+
+Object: Ex = "{" <s:SetStmt*> "}" => ExT::Object(ExSet::from(s).unwrap()).into();
+
+FuncDef: Ex = {
+    <i:Ident> ":" <e:Expr> => ExT::FuncDefIdent(i, e).into(),
+    "{" <i:(<Ident> ",")*> "..." "}" ":" <e:Expr> => ExT::FuncDefPattern(i, e).into(),
+};
+
+Let: Ex = "let" <s:SetStmt*> "in" <e:Expr> => ExT::Let(s, e).into();
+SetStmt: (String, Ex) = <i:Ident> "=" <e:Expr> ";" => (i, e);
+
+Variable: Ex = <s:Ident> => ExT::Var(s).into();
+
+Ident: String = <s:r"[a-zA-Z][a-zA-Z0-9_]*"> => s.into();
+Value: Ex = {
+    <s:r"[0-9]+"> => unpack_int(s),
+    // TODO: Escape chars
+    <s:r#""[^"]*""#> => unpack_str(s),
+};
+

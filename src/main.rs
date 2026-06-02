@@ -1,16 +1,18 @@
 pub mod error;
 pub mod expr;
-pub mod grammar;
 pub mod immap;
+pub mod parser;
 pub mod value;
 
-use value::Value;
 use clap::Parser;
 use error::Result;
-use grammar::DnjParser;
 use std::{path::PathBuf, process::exit};
+use value::Value;
 
-use crate::expr::{Expr, ExprSet};
+use crate::{
+    expr::{Expr, ExprSet},
+    parser::parse_file,
+};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -21,7 +23,7 @@ struct Args {
 }
 
 fn run(args: Args) -> Result<()> {
-    let expr: Expr<Value> = DnjParser::parse_file(args.input)?.bind(ExprSet::new());
+    let expr: Expr<Value> = parse_file(args.input).unwrap().bind(ExprSet::new());
     println!("input: {:#}", expr);
     let resolved = expr.eval().unwrap();
     println!("output: {:#}", resolved);

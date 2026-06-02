@@ -64,7 +64,7 @@ impl DnjParser {
             [object(x)] => x,
             [const_int(x)] => x,
             [const_str(x)] => x,
-            [func_call(x)] => x,
+            [expr_func_call(x)] => x,
             [func_def(x)] => x,
             [let_def(x)] => x,
             [variable(x)] => x,
@@ -106,7 +106,7 @@ impl DnjParser {
         })
     }
 
-    fn func_call<T>(input: Node) -> Result<Expr<T>>
+    fn expr_func_call<T>(input: Node) -> Result<Expr<T>>
     where
         T: ParsableValue + Clone + PartialEq + Display,
     {
@@ -288,12 +288,10 @@ mod tests {
         let tree = DnjParser::parse_str(code).unwrap();
         assert_eq!(
             Expr::from(ExprType::Object(
-                ExprSet::from(
-                    [
-                        ("boll", ExprType::Value(TestValue::Int(123)).into()),
-                        ("hej", ExprType::Value(TestValue::Int(323)).into())
-                    ]
-                )
+                ExprSet::from([
+                    ("boll", ExprType::Value(TestValue::Int(123)).into()),
+                    ("hej", ExprType::Value(TestValue::Int(323)).into())
+                ])
                 .unwrap()
             )),
             tree
@@ -311,24 +309,20 @@ mod tests {
         let tree = DnjParser::parse_str(code).unwrap();
         assert_eq!(
             Expr::from(ExprType::Object(
-                ExprSet::from(
-                    [
-                        ("boll", ExprType::Value(TestValue::Int(123)).into()),
-                        (
-                            "hej".into(),
-                            ExprType::Object(
-                                ExprSet::from(
-                                    [
-                                        ("a", ExprType::Value(TestValue::Int(2)).into()),
-                                        ("b", ExprType::Value(TestValue::Int(3)).into()),
-                                    ]
-                                )
-                                .unwrap()
-                            )
-                            .into()
+                ExprSet::from([
+                    ("boll", ExprType::Value(TestValue::Int(123)).into()),
+                    (
+                        "hej".into(),
+                        ExprType::Object(
+                            ExprSet::from([
+                                ("a", ExprType::Value(TestValue::Int(2)).into()),
+                                ("b", ExprType::Value(TestValue::Int(3)).into()),
+                            ])
+                            .unwrap()
                         )
-                    ]
-                )
+                        .into()
+                    )
+                ])
                 .unwrap()
             )),
             tree

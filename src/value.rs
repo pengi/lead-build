@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::grammar::ParsableValue;
+use crate::parser::ParsableValue;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Value {
