@@ -52,14 +52,14 @@ where
         Self(BTreeMap::new())
     }
 
-    pub fn single(key: String, value: T) -> ImMap<T> {
-        Self::new().set(key, value).unwrap()
+    pub fn single(key: impl ToString, value: T) -> ImMap<T> {
+        Self::new().set(key.to_string(), value).unwrap()
     }
 
-    pub fn from(fields: impl Iterator<Item = (String, T)>) -> Result<ImMap<T>> {
+    pub fn from(fields: impl IntoIterator<Item = (impl ToString, T)>) -> Result<ImMap<T>> {
         let mut ret: ImMap<T> = Default::default();
         for (key, value) in fields {
-            ret = ret.set(key, value)?
+            ret = ret.set(key.to_string(), value)?
         }
         Ok(ret)
     }
@@ -71,11 +71,11 @@ where
         ImMap(out)
     }
 
-    pub fn set(self, key: String, value: T) -> Result<ImMap<T>> {
+    pub fn set(self, key: impl ToString, value: T) -> Result<ImMap<T>> {
         let mut map = self;
-        let res = map.0.insert(key.clone(), value);
+        let res = map.0.insert(key.to_string(), value);
         match res {
-            Some(_) => Err(Error::DupKey(key)),
+            Some(_) => Err(Error::DupKey(key.to_string())),
             None => Ok(map),
         }
     }

@@ -290,10 +290,9 @@ mod tests {
             Expr::from(ExprType::Object(
                 ExprSet::from(
                     [
-                        ("boll".into(), ExprType::Value(TestValue::Int(123)).into()),
-                        ("hej".into(), ExprType::Value(TestValue::Int(323)).into())
+                        ("boll", ExprType::Value(TestValue::Int(123)).into()),
+                        ("hej", ExprType::Value(TestValue::Int(323)).into())
                     ]
-                    .into_iter()
                 )
                 .unwrap()
             )),
@@ -314,23 +313,21 @@ mod tests {
             Expr::from(ExprType::Object(
                 ExprSet::from(
                     [
-                        ("boll".into(), ExprType::Value(TestValue::Int(123)).into()),
+                        ("boll", ExprType::Value(TestValue::Int(123)).into()),
                         (
                             "hej".into(),
                             ExprType::Object(
                                 ExprSet::from(
                                     [
-                                        ("a".into(), ExprType::Value(TestValue::Int(2)).into()),
-                                        ("b".into(), ExprType::Value(TestValue::Int(3)).into()),
+                                        ("a", ExprType::Value(TestValue::Int(2)).into()),
+                                        ("b", ExprType::Value(TestValue::Int(3)).into()),
                                     ]
-                                    .into_iter()
                                 )
                                 .unwrap()
                             )
                             .into()
                         )
                     ]
-                    .into_iter()
                 )
                 .unwrap()
             )),

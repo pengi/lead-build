@@ -406,7 +406,7 @@ mod tests {
         let func_b = DnjParser::parse_str("var: 42").unwrap();
         let call = DnjParser::parse_str("func_b 32").unwrap();
         let varscope =
-            ExprSet::from(vec![("func_a".into(), func_a), ("func_b".into(), func_b)].into_iter())
+            ExprSet::from(vec![("func_a", func_a), ("func_b", func_b)])
                 .unwrap();
         let value: Expr<TestValue> = call.bind(varscope).resolve().unwrap();
         assert_eq!(*value.0, ExprType::Value(TestValue::Int(42)));
@@ -418,7 +418,7 @@ mod tests {
         let arg_var = DnjParser::parse_str("32").unwrap();
         let call = DnjParser::parse_str("func arg").unwrap();
         let varscope =
-            ExprSet::from(vec![("func".into(), func_var), ("arg".into(), arg_var)].into_iter())
+            ExprSet::from(vec![("func", func_var), ("arg", arg_var)])
                 .unwrap();
         let value: Expr<TestValue> = call.bind(varscope).resolve().unwrap();
         assert_eq!(*value.0, ExprType::Value(TestValue::Int(32)));
