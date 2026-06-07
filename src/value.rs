@@ -134,7 +134,7 @@ impl ExprOps for Value {
         }
     }
 
-    fn from_bool(&self, value: bool) -> Self {
+    fn new_from_bool(&self, value: bool) -> Self {
         Value::Bool(value)
     }
 }

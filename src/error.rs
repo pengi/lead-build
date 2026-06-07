@@ -2,7 +2,7 @@ use std::result;
 
 use thiserror::Error;
 
-use crate::expr;
+use crate::{expr, parser};
 
 pub type Result<T> = result::Result<T, DnjError>;
 
@@ -12,7 +12,7 @@ pub enum DnjError {
     Io(#[from] std::io::Error),
 
     #[error("Parse error: {0}")]
-    ParseError(String),
+    ParseError(#[from] parser::Error),
 
     #[error("Expression error: {0}")]
     ExprError(#[from] expr::Error),

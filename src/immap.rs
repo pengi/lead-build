@@ -90,6 +90,17 @@ where
         self.0.get(key).cloned()
     }
 
+    pub fn get_mut(&mut self, key: &str) -> Option<&mut T> {
+        self.0.get_mut(key)
+    }
+
+    pub fn foreach<F, E>(&self, f: F) -> std::result::Result<(), E>
+    where
+        F: Fn(&str, &T) -> std::result::Result<(), E>,
+    {
+        self.0.iter().try_for_each(|(name, value)| f(name, value))
+    }
+
     pub fn map<B, F>(&self, f: F) -> ImMap<B>
     where
         F: Fn(&T) -> B,
@@ -106,7 +117,7 @@ where
         Ok(ImMap::from(
             self.0
                 .iter()
-                .map(|(name, value)| Ok((name.clone(), f(&value)?)))
+                .map(|(name, value)| Ok((name.clone(), f(value)?)))
                 .collect::<std::result::Result<BTreeMap<String, B>, E>>()?,
         )
         .unwrap())

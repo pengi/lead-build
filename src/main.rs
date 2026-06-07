@@ -10,7 +10,7 @@ use std::{path::PathBuf, process::exit};
 use value::Value;
 
 use crate::{
-    expr::{Expr, ExprSet},
+    expr::{ExprRef, ExprSet, ExprType},
     parser::parse_file,
 };
 
@@ -23,10 +23,10 @@ struct Args {
 }
 
 fn run(args: Args) -> Result<()> {
-    let expr: Expr<Value> = parse_file(args.input)?.bind(ExprSet::new());
+    let expr: ExprRef<Value> = ExprType::BoundExpr(ExprSet::new(), parse_file(args.input)?).into();
     println!("input: {:#}", expr);
-    let resolved = expr.eval()?;
-    println!("output: {:#}", resolved);
+    expr.eval()?;
+    println!("output: {:#}", expr);
     Ok(())
 }
 

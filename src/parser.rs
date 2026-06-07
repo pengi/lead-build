@@ -1,13 +1,47 @@
-use crate::error::{DnjError, Result};
-use crate::expr::{Expr, ExprBinOp, ExprSet, ExprType, ExprUnOp};
+use crate::expr::{ExprBinOp, ExprRef, ExprSet, ExprType, ExprUnOp};
 use crate::value::Value;
+use std::fmt::Display;
 use std::fs;
 use std::path::PathBuf;
 lalrpop_mod!(grammar);
 
-use lalrpop_util::lalrpop_mod;
+use lalrpop_util::{ParseError, lalrpop_mod};
 
-type Ex = Expr<Value>;
+#[derive(Debug)]
+pub struct Error {
+    msg: String,
+}
+impl std::error::Error for Error {}
+type Result<T> = std::result::Result<T, Error>;
+
+type IntParseError<'input> = ParseError<usize, grammar::Token<'input>, &'static str>;
+// type IntResult<'input, T> = std::result::Result<T, IntParseError<'input>>;
+
+impl From<&str> for Error {
+    fn from(value: &str) -> Self {
+        Error {
+            msg: value.to_string(),
+        }
+    }
+}
+impl From<String> for Error {
+    fn from(value: String) -> Self {
+        Error { msg: value }
+    }
+}
+impl<'input> From<IntParseError<'input>> for Error {
+    fn from(value: IntParseError<'input>) -> Self {
+        value.to_string().into() // TODO: nicer error
+    }
+}
+impl Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.msg.fmt(f)
+    }
+}
+
+type Ex = ExprRef<Value>;
+// type ExR = Result<ExprRef<Value>>;
 type ExT = ExprType<Value>;
 type ExSet = ExprSet<Value>;
 
@@ -19,21 +53,17 @@ where
     fn parse_string(value: impl ToString) -> Option<Self>;
 }
 
-pub fn parse_file(path: PathBuf) -> Result<Expr<Value>> {
+pub fn parse_file(path: PathBuf) -> Result<ExprRef<Value>> {
     let parser: grammar::ExprParser = grammar::ExprParser::new();
     let code = fs::read_to_string(path).unwrap();
-    match parser.parse(&code) {
-        Ok(res) => Ok(res),
-        Err(err) => Err(DnjError::ParseError(err.to_string())),
-    }
+    let result = parser.parse(&code)?;
+    Ok(result)
 }
 
-pub fn parse_str(code: &str) -> Result<Expr<Value>> {
+pub fn parse_str(code: &str) -> Result<ExprRef<Value>> {
     let parser = grammar::ExprParser::new();
-    match parser.parse(code) {
-        Ok(res) => Ok(res),
-        Err(err) => Err(DnjError::ParseError(err.to_string())),
-    }
+    let result = parser.parse(code)?;
+    Ok(result)
 }
 
 fn unpack_str(input: &str) -> Ex {
@@ -56,25 +86,37 @@ fn unpack_str(input: &str) -> Ex {
     } {
         out.push(c);
     }
-    Ex::from(Value::parse_string(out).unwrap())
+    match Value::parse_string(out) {
+        Some(value) => value.into(),
+        None => panic!("Error parsing string"),
+    }
 }
 
 fn unpack_int(input: &str) -> Ex {
-    Ex::from(Value::parse_int(input).unwrap())
+    match Value::parse_int(input) {
+        Some(value) => value.into(),
+        None => panic!("Error parsing int"),
+    }
 }
 
 fn unpack_bool(input: bool) -> Ex {
-    Ex::from(Value::Bool(input))
+    Value::Bool(input).into()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn eval(code: &str) -> ExprRef<Value> {
+        parse_str(code).unwrap()
+    }
+
     #[test]
     fn test_parse_int() {
-        let tree: Expr<Value> = parse_str("1231").unwrap();
-        assert_eq!(Expr::from(ExprType::Value(Value::Int(1231))), tree);
+        assert_eq!(
+            ExprRef::from(ExprType::Value(Value::Int(1231))),
+            eval("1231")
+        );
     }
 
     #[test]
@@ -85,16 +127,15 @@ mod tests {
                 hej = 323;
             }
         "#;
-        let tree = parse_str(code).unwrap();
         assert_eq!(
-            Expr::from(ExprType::Object(
+            ExprRef::from(ExprType::Object(
                 ExprSet::from([
                     ("boll", ExprType::Value(Value::Int(123)).into()),
                     ("hej", ExprType::Value(Value::Int(323)).into())
                 ])
                 .unwrap()
             )),
-            tree
+            eval(code)
         );
     }
 
@@ -106,9 +147,8 @@ mod tests {
                 hej = { a=2; b=3; };
             }
         "#;
-        let tree = parse_str(code).unwrap();
         assert_eq!(
-            Expr::from(ExprType::Object(
+            ExprRef::from(ExprType::Object(
                 ExprSet::from([
                     ("boll", ExprType::Value(Value::Int(123)).into()),
                     (
@@ -125,56 +165,52 @@ mod tests {
                 ])
                 .unwrap()
             )),
-            tree
+            eval(code)
         );
     }
 
     #[test]
     fn test_parse_str() {
         let code = "\"boll\\\"hej\\u0041\"";
-        let tree = parse_str(code).unwrap();
         assert_eq!(
-            Expr::from(ExprType::Value(Value::String("boll\"hejA".into()))),
-            tree
+            ExprRef::from(ExprType::Value(Value::String("boll\"hejA".into()))),
+            eval(code)
         );
     }
 
     #[test]
     fn test_parse_func_call() {
         let code = "hej 12";
-        let tree = parse_str(code).unwrap();
         assert_eq!(
-            Expr::from(ExprType::FuncCall(
+            ExprRef::from(ExprType::FuncCall(
                 "hej".into(),
                 ExprType::Value(Value::Int(12)).into()
             )),
-            tree
+            eval(code)
         );
     }
 
     #[test]
     fn test_parse_func_def_ident() {
         let code = "hej: 12";
-        let tree = parse_str(code).unwrap();
         assert_eq!(
-            Expr::from(ExprType::FuncDefIdent(
+            ExprRef::from(ExprType::FuncDefIdent(
                 "hej".into(),
                 ExprType::Value(Value::Int(12)).into()
             )),
-            tree
+            eval(code)
         );
     }
 
     #[test]
     fn test_parse_func_def_pattern_variadic() {
         let code = "{ hej, hopp, svej, ... }: 12";
-        let tree = parse_str(code).unwrap();
         assert_eq!(
-            Expr::from(ExprType::FuncDefPattern(
+            ExprRef::from(ExprType::FuncDefPattern(
                 vec!["hej".into(), "hopp".into(), "svej".into()],
                 ExprType::Value(Value::Int(12)).into()
             )),
-            tree
+            eval(code)
         );
     }
 
@@ -182,7 +218,7 @@ mod tests {
     fn test_parse_func_def_pattern_non_var_1() {
         let code = "{ hej, hopp, svej }: 12";
 
-        let res: Result<Expr<Value>> = parse_str(code);
+        let res: Result<ExprRef<Value>> = parse_str(code);
         // Should be an error, try to unwrap it. Panic otherwise
         let _ = res.unwrap_err();
     }
@@ -191,7 +227,7 @@ mod tests {
     fn test_parse_func_def_pattern_non_var_2() {
         let code = "{ hej, hopp, svej, }: 12";
 
-        let res: Result<Expr<Value>> = parse_str(code);
+        let res: Result<ExprRef<Value>> = parse_str(code);
         // Should be an error, try to unwrap it. Panic otherwise
         let _ = res.unwrap_err();
     }
@@ -199,25 +235,23 @@ mod tests {
     #[test]
     fn test_parse_let() {
         let code = "let a = 21; b = 33; in 434";
-        let tree = parse_str(code).unwrap();
         assert_eq!(
-            Expr::from(ExprType::Let(
+            ExprRef::from(ExprType::Let(
                 vec![
                     ("a".into(), ExprType::Value(Value::Int(21)).into()),
                     ("b".into(), ExprType::Value(Value::Int(33)).into()),
                 ],
                 ExprType::Value(Value::Int(434)).into(),
             )),
-            tree
+            eval(code)
         );
     }
 
     #[test]
     fn test_parse_add_mul_prio() {
         let code = "2 * 3 + 4 * 5";
-        let tree = parse_str(code).unwrap();
         assert_eq!(
-            Expr::from(ExprType::BinOp(
+            ExprRef::from(ExprType::BinOp(
                 ExprBinOp::Add,
                 ExprType::BinOp(
                     ExprBinOp::Mult,
@@ -232,21 +266,20 @@ mod tests {
                 )
                 .into()
             )),
-            tree
+            eval(code)
         );
     }
 
     #[test]
     fn test_bool_op() {
         let code = "false || true";
-        let tree = parse_str(code).unwrap();
         assert_eq!(
-            Expr::from(ExprType::BinOp(
+            ExprRef::from(ExprType::BinOp(
                 ExprBinOp::LogOr,
                 ExprType::Value(Value::Bool(false)).into(),
                 ExprType::Value(Value::Bool(true)).into(),
             )),
-            tree
+            eval(code)
         );
     }
 }

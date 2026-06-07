@@ -1,10 +1,10 @@
 let
     a = 12;
     b = 32;
-    build = {target, ...}: b;
+    f = a: b;
+    k = f 1;
 in
 {
-    app = build {
-        target = "app.elf";
-    };
+    x = k;
+    y = k;
 }
