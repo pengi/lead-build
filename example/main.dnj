@@ -1,0 +1,6 @@
+let
+    lib = include "subdir/proxylib.dnj";
+in
+{
+    x = lib.add_tnd 77;
+}

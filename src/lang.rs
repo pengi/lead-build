@@ -1,3 +1,4 @@
+mod context;
 mod error;
 mod expr;
 mod immap;
@@ -7,8 +8,9 @@ mod stringdecode;
 #[cfg(test)]
 mod testvalue;
 
-pub use error::Result;
-pub use expr::{Error as ExprError, Expr, ExprSet, ExprType};
+pub use context::LangContext;
+pub use error::{Error, Result};
+pub use expr::{Expr, ExprSet, ExprType};
 pub use parser::{ParsableValue, parse_str};
 
 pub mod ops {

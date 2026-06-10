@@ -1,15 +1,12 @@
-pub mod context;
 pub mod lang;
 pub mod value;
 
-use lang::{Expr, Result};
+use lang::{Expr, LangContext, Result};
 use std::process::exit;
 use value::Value;
 
 use clap::Parser;
 use std::path::PathBuf;
-
-use crate::context::LangContext;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]

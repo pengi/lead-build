@@ -1,13 +1,11 @@
 use std::result;
 
-use thiserror::Error;
-
 use super::{expr, immap, parser};
 
-pub type Result<T> = result::Result<T, DnjError>;
+pub type Result<T> = result::Result<T, Error>;
 
-#[derive(Error, Debug)]
-pub enum DnjError {
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
     #[error("IO Error: {0}")]
     Io(#[from] std::io::Error),
 

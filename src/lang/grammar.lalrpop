@@ -17,7 +17,7 @@ where
     T: ParsableValue + Clone + PartialEq + Display + ExprOps;
 
 pub Expr: Expr<T> = {
-    <Expr14>,
+    <Expr15>,
 };
 
 // Nix, for reference:
@@ -47,6 +47,11 @@ pub Expr: Expr<T> = {
 // Logical disjunction (OR)       bool     ||  bool                   left    13
 // Logical implication            bool     ->  bool                   none    14
 
+Expr15: Expr<T> = {
+    <i:Ident> ":" <e:Expr15> => ExprType::FuncDefIdent(i, e).into(),
+    "{" <i:(<Ident> ",")*> "..." "}" ":" <e:Expr15> => ExprType::FuncDefPattern(i, e).into(),
+    <Expr14>
+};
 
 Expr14: Expr<T> = {
     <lhs:Expr13> "->" <rhs:Expr13> => ExprType::BinOp(ExprBinOp::LogImpl, lhs, rhs).into(),
@@ -115,20 +120,18 @@ Expr3: Expr<T> = {
 };
 
 Expr2: Expr<T> = {
-    // TODO: Is this ExprTerm correct here?
-    <i:Ident> <e:ExprTerm> => ExprType::FuncCall(i, e).into(),
+    <efunc:Expr2> <earg:Expr1> => ExprType::FuncCall(efunc, earg).into(),
     <Expr1>,
 };
 
 Expr1: Expr<T> = {
-    <lhs:ExprTerm> "." <rhs:Variable> => ExprType::BinOp(ExprBinOp::AttrSel, lhs, rhs).into(),
+    <lhs:ExprTerm> "." <rhs:Ident> => ExprType::AttrSel(lhs, rhs).into(),
     <ExprTerm>,
 };
 
 ExprTerm: Expr<T> = {
     <Object>,
     <Value>,
-    <FuncDef>,
     <Let>,
     <Variable>,
     "(" <Expr> ")"
@@ -136,11 +139,6 @@ ExprTerm: Expr<T> = {
 
 Object: Expr<T> = "{" <s:SetStmt*> "}" => ExprType::Object(ExprSet::from(s).unwrap()).into();
 
-// TODO: Check FuncDef precedence in Expr
-FuncDef: Expr<T> = {
-    <i:Ident> ":" <e:ExprTerm> => ExprType::FuncDefIdent(i, e).into(),
-    "{" <i:(<Ident> ",")*> "..." "}" ":" <e:ExprTerm> => ExprType::FuncDefPattern(i, e).into(),
-};
 
 Let: Expr<T> = "let" <s:SetStmt*> "in" <e:ExprTerm> => ExprType::Let(s, e).into();
 SetStmt: (String, Expr<T>) = <i:Ident> "=" <e:Expr> ";" => (i, e);

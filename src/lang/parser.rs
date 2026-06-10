@@ -266,7 +266,7 @@ mod tests {
         let code = "hej 12";
         assert_eq!(
             Expr::from(ExprType::FuncCall(
-                "hej".into(),
+                ExprType::Var("hej".into()).into(),
                 ExprType::Value(TestValue::Int(12)).into()
             )),
             eval(code)

@@ -5,7 +5,7 @@ pub enum StringType {
 }
 
 pub fn string_decode(input: &str) -> Option<Vec<StringType>> {
-    let mut input = input.chars().into_iter();
+    let mut input = input.chars();
 
     let mut output: Vec<StringType> = Vec::new();
     let mut buf = String::new();

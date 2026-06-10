@@ -1,9 +1,0 @@
-let
-    a = 12;
-    b = 32;
-    f = a: ("Hello" + a);
-    k = f 1;
-in
-{
-    y = f "rld!";
-}
