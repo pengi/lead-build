@@ -1,4 +1,5 @@
 pub mod lang;
+pub mod ninjawriter;
 pub mod value;
 
 use lang::{Expr, LangContext, Result};
