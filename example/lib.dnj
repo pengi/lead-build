@@ -1,3 +1,7 @@
 {
+    cwd,
+    ...
+}: {
     add_tnd = a: 1000 + a;
+    dir = cwd;
 }

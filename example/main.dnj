@@ -1,6 +1,13 @@
+{
+    cwd,
+    ...
+}:
 let
-    lib = include "subdir/proxylib.dnj";
+    lib = include (cwd / "subdir" / "proxylib.dnj") { root = cwd; };
 in
 {
-    x = lib.add_tnd 77;
+    stuff = lib.lib.add_tnd 12;
+    libdir = lib.lib.dir;
+    proxydir = lib.dir;
+    proxylib = (cwd / "subdir" / "proxylib.dnj");
 }

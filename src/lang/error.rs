@@ -17,4 +17,13 @@ pub enum Error {
 
     #[error("Expression error: {0}")]
     ExprError(#[from] expr::Error),
+
+    #[error("{0}")]
+    CustomError(String),
+}
+
+impl From<String> for Error {
+    fn from(value: String) -> Self {
+        Error::CustomError(value)
+    }
 }

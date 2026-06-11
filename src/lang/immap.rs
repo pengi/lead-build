@@ -75,10 +75,15 @@ where
 
     pub fn set(self, key: impl ToString, value: T) -> Result<ImMap<T>> {
         let mut map = self;
-        let res = map.0.insert(key.to_string(), value);
+        map.set_mut(key.to_string(), value)?;
+        Ok(map)
+    }
+
+    pub fn set_mut(&mut self, key: impl ToString, value: T) -> Result<()> {
+        let res = self.0.insert(key.to_string(), value);
         match res {
             Some(_) => Err(Error::DupKey(key.to_string())),
-            None => Ok(map),
+            None => Ok(()),
         }
     }
 

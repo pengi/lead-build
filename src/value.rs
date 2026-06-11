@@ -2,15 +2,19 @@ use std::fmt::Display;
 
 use strum::EnumTryAs;
 
-use crate::lang::{
-    ParsableValue,
-    ops::{Error, ExprOps, Result},
+use crate::{
+    lang::{
+        ParsableValue,
+        ops::{Error, ExprOps, Result},
+    },
+    path::VirtPath,
 };
 
 #[derive(Clone, PartialEq, Debug, EnumTryAs)]
 pub enum Value {
     Int(i64),
     String(String),
+    Path(VirtPath),
     Bool(bool),
 }
 
@@ -19,6 +23,7 @@ impl Display for Value {
         match self {
             Value::Int(v) => v.fmt(f),
             Value::String(v) => v.fmt(f),
+            Value::Path(v) => v.fmt(f),
             Value::Bool(v) => v.fmt(f),
         }
     }
@@ -43,6 +48,10 @@ impl ExprOps for Value {
         match (lhs, rhs) {
             (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs + rhs)),
             (Value::String(lhs), Value::String(rhs)) => Ok(Value::String(lhs.clone() + rhs)),
+            (Value::Path(lhs), Value::String(rhs)) => Err(Error::Type(format!(
+                "Can't use paths as part of strings (yet?) ({} + {})",
+                lhs, rhs
+            ))),
             _ => Err(Error::Type(format!("can't add {} and {}", lhs, rhs))),
         }
     }
@@ -64,6 +73,10 @@ impl ExprOps for Value {
     fn op_div(lhs: &Self, rhs: &Self) -> Result<Self> {
         match (lhs, rhs) {
             (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs / rhs)),
+            (Value::Path(lhs), Value::String(rhs)) => match lhs.clone().step(rhs) {
+                Some(path) => Ok(Value::Path(path)),
+                None => todo!(),
+            },
             _ => Err(Error::Type(format!("can't divide {} and {}", lhs, rhs))),
         }
     }

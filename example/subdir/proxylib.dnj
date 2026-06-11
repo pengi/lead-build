@@ -1,1 +1,12 @@
-include "../lib.dnj"
+{
+    cwd,
+    ...
+}:
+{
+    root,
+    ...
+}:
+{
+    lib = include (root / "lib.dnj");
+    dir = cwd;
+}

@@ -599,6 +599,22 @@ where
     pub fn new_builtin(func: Rc<dyn ExprBuiltin<T>>) -> Expr<T> {
         ExprType::FuncDefBuiltin(ExprBuiltinWrapper(func.as_ref().get_name(), func)).into()
     }
+
+    pub fn from_builtins(value: Vec<Rc<dyn ExprBuiltin<T>>>) -> Expr<T> {
+        let mut exprset = ExprSet::new();
+
+        for bi in value.into_iter() {
+            let name = bi.get_name();
+            exprset = exprset
+                .set(
+                    name.clone(),
+                    ExprType::FuncDefBuiltin(ExprBuiltinWrapper(name, bi)).into(),
+                )
+                .unwrap();
+        }
+
+        exprset.into()
+    }
 }
 
 impl<T> ExprType<T> where T: Clone + PartialEq + Display + ExprOps + Debug {}

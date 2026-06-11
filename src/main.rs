@@ -1,13 +1,15 @@
+pub mod builtins;
+pub mod context;
 pub mod lang;
 pub mod ninjawriter;
+pub mod path;
 pub mod value;
 
-use lang::{Expr, LangContext, Result};
-use std::process::exit;
-use value::Value;
-
 use clap::Parser;
-use std::path::PathBuf;
+use context::LangContext;
+use lang::{Expr, Result};
+use std::{path::PathBuf, process::exit};
+use value::Value;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -18,8 +20,9 @@ struct Args {
 }
 
 fn run(args: Args) -> Result<()> {
-    let ctx: LangContext<Value> = LangContext::new();
-    let expr: Expr<Value> = ctx.read_file(args.input)?;
+    let mut ctx: LangContext = LangContext::new();
+    let main_file = ctx.virtualize_path("root", &args.input)?;
+    let expr: Expr<Value> = ctx.include(main_file)?;
     println!("input: {:#}", expr);
     expr.eval()?;
     println!("output: {:#}", expr);
