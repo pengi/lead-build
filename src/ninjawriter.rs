@@ -1,7 +1,4 @@
-use std::{
-    collections::BTreeSet,
-    fmt::{Display, Write},
-};
+use std::{collections::BTreeSet, fmt::Display};
 
 /*
  * Model
@@ -50,7 +47,7 @@ pub struct NinjaFile {
 
 fn ninja_indent(f: &mut std::fmt::Formatter<'_>, indent: i32) -> std::fmt::Result {
     for _ in 0..indent {
-        f.write_str("  ")?;
+        write!(f, "  ")?;
     }
     Ok(())
 }
@@ -60,12 +57,12 @@ fn ninja_esc_string(f: &mut std::fmt::Formatter<'_>, indent: i32, input: &str) -
         match c {
             '$' => write!(f, "$$")?,
             '\n' => {
-                write!(f, "$\n")?;
+                writeln!(f, "$")?;
                 ninja_indent(f, indent)?;
             }
             ':' => write!(f, "$:")?,
             ' ' => write!(f, "$ ")?,
-            c => f.write_char(c)?,
+            c => write!(f, "{}", c)?,
         }
     }
     Ok(())
@@ -75,62 +72,62 @@ impl NinjaVar {
     fn write(&self, indent: i32, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         ninja_indent(f, indent)?;
         ninja_esc_string(f, indent + 1, &self.name)?;
-        f.write_str(" =")?;
+        write!(f, " =")?;
         for arg in self.args.iter() {
-            f.write_char(' ')?;
+            write!(f, " ")?;
             ninja_esc_string(f, indent + 1, arg)?;
         }
-        write!(f, "\n")?;
+        writeln!(f)?;
         Ok(())
     }
 }
 
 impl Display for NinjaRule {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("rule ")?;
+        write!(f, "rule ")?;
         ninja_esc_string(f, 1, &self.name)?;
-        f.write_char('\n')?;
+        writeln!(f)?;
         for var in self.vars.iter() {
             var.write(1, f)?;
         }
-        f.write_char('\n')?;
+        writeln!(f)?;
         Ok(())
     }
 }
 
 impl Display for NinjaBuild {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("build")?;
+        write!(f, "build")?;
         for outp in self.outputs.iter() {
-            f.write_char(' ')?;
+            write!(f, " ")?;
             ninja_esc_string(f, 1, outp)?;
         }
-        f.write_str(": ")?;
+        write!(f, ": ")?;
         ninja_esc_string(f, 1, &self.rule)?;
         for inp in self.inputs.iter() {
-            f.write_char(' ')?;
+            write!(f, " ")?;
             ninja_esc_string(f, 1, inp)?;
         }
         if !self.deps.is_empty() {
-            f.write_str(" |")?;
+            write!(f, " |")?;
             for dep in self.deps.iter() {
-                f.write_char(' ')?;
+                write!(f, " ")?;
                 ninja_esc_string(f, 1, dep)?;
             }
         }
-        f.write_char('\n')?;
+        writeln!(f)?;
         for var in self.vars.iter() {
             var.write(1, f)?;
         }
-        f.write_char('\n')?;
+        writeln!(f)?;
         if self.is_default {
-            f.write_str("default")?;
+            write!(f, "default")?;
             for outp in self.outputs.iter() {
-                f.write_char(' ')?;
+                write!(f, " ")?;
                 ninja_esc_string(f, 1, outp)?;
             }
-            f.write_char('\n')?;
-            f.write_char('\n')?;
+            writeln!(f)?;
+            writeln!(f)?;
         }
         Ok(())
     }
@@ -174,9 +171,10 @@ impl UniqueNames {
 
 impl NinjaRule {
     fn new(name: impl ToString) -> Self {
-        let mut rule: NinjaRule = Default::default();
-        rule.name = name.to_string();
-        rule
+        NinjaRule {
+            name: name.to_string(),
+            ..Default::default()
+        }
     }
 
     pub fn var(&mut self, name: impl ToString, args: Vec<String>) -> &mut Self {
@@ -194,10 +192,11 @@ impl NinjaRule {
 
 impl NinjaBuild {
     fn new(rule: &NinjaRuleRef) -> Self {
-        let mut build: NinjaBuild = Default::default();
-        build.rule = rule.0.clone();
-        build.is_default = false;
-        build
+        NinjaBuild {
+            rule: rule.0.clone(),
+            is_default: false,
+            ..Default::default()
+        }
     }
 
     pub fn output(&mut self, name: impl ToString) -> &mut Self {
