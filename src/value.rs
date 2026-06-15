@@ -21,6 +21,7 @@ pub enum Value {
     Build(Rc<PbBuild>),
     BuildRule(Rc<PbBuildRule>),
     BuildVar(String),
+    BuildConcat(Vec<Value>)
 }
 
 impl Display for Value {
@@ -33,6 +34,12 @@ impl Display for Value {
             Value::Build(v) => v.fmt(f),
             Value::BuildRule(v) => v.fmt(f),
             Value::BuildVar(v) => write!(f, "${}", v),
+            Value::BuildConcat(vs) => {
+                for v in vs.iter() {
+                    v.fmt(f)?;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -60,6 +67,18 @@ impl ExprOps for Value {
                 "Can't use paths as part of strings (yet?) ({} + {})",
                 lhs, rhs
             ))),
+            (Value::String(_), Value::BuildVar(_)) => Ok(Value::BuildConcat(vec![lhs.clone(), rhs.clone()])),
+            (Value::BuildVar(_), Value::String(_)) => Ok(Value::BuildConcat(vec![lhs.clone(), rhs.clone()])),
+            (Value::BuildConcat(vs), Value::BuildVar(_)) => {
+                let mut vs = vs.clone();
+                vs.push(rhs.clone());
+                Ok(Value::BuildConcat(vs))
+            },
+            (Value::BuildConcat(vs), Value::String(_)) => {
+                let mut vs = vs.clone();
+                vs.push(rhs.clone());
+                Ok(Value::BuildConcat(vs))
+            },
             _ => Err(Error::Type(format!("can't add {} and {}", lhs, rhs))),
         }
     }

@@ -69,6 +69,16 @@ impl PbBuildRule {
                             Value::Int(value) => NinjaArg::Const(format!("{}", value)),
                             Value::String(value) => NinjaArg::Const(value.clone()),
                             Value::BuildVar(value) => NinjaArg::Var(value.clone()),
+                            Value::BuildConcat(vs) => NinjaArg::Concat(
+                                vs.iter()
+                                    .map(|v| match v {
+                                        Value::Int(value) => NinjaArg::Const(format!("{}", value)),
+                                        Value::String(value) => NinjaArg::Const(value.clone()),
+                                        Value::BuildVar(value) => NinjaArg::Var(value.clone()),
+                                        _ => unreachable!(),
+                                    })
+                                    .collect(),
+                            ),
                             _ => panic!("Rule attr is of invalid type: {}", attr),
                         },
                         _ => panic!("Rule attr is not a value"),

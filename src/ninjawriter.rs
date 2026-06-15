@@ -8,6 +8,7 @@ use std::{collections::BTreeSet, fmt::Display};
 pub enum NinjaArg {
     Const(String),
     Var(String),
+    Concat(Vec<NinjaArg>),
 }
 
 #[derive(Default, Debug)]
@@ -94,6 +95,16 @@ impl NinjaVar {
             match arg {
                 NinjaArg::Const(cnst) => ninja_esc_string(f, indent + 1, cnst),
                 NinjaArg::Var(name) => write!(f, "${{{}}}", name),
+                NinjaArg::Concat(ninja_args) => {
+                    for subarg in ninja_args.iter() {
+                        match subarg {
+                            NinjaArg::Const(cnst) => ninja_esc_string(f, indent + 1, cnst),
+                            NinjaArg::Var(name) => write!(f, "${{{}}}", name),
+                            NinjaArg::Concat(_) => unreachable!(),
+                        }?;
+                    }
+                    Ok(())
+                }
             }?;
         }
         writeln!(f)?;

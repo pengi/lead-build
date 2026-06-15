@@ -3,7 +3,8 @@ let
     compile_obj = pb.rule (
         {input, output, ...}:
         {
-            command = ["gcc" "-c" "-o" output input];
+            command = ["gcc" "-c" "-o" output "-MMD" "-MF" "${output}.d" input];
+            deps = "${output}.d";
         }
     );
 in
