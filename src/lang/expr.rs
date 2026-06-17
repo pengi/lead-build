@@ -4,7 +4,7 @@ use std::{
     rc::Rc,
 };
 
-use super::immap::ImMap;
+use super::immutablemap::ImmutableMap;
 
 pub mod ops {
     use super::{Debug, Display, Expr};
@@ -46,8 +46,8 @@ pub mod ops {
         }
     }
 
-    impl From<super::super::immap::Error> for Error {
-        fn from(value: super::super::immap::Error) -> Self {
+    impl From<super::super::immutablemap::Error> for Error {
+        fn from(value: super::super::immutablemap::Error) -> Self {
             Error::ExprError(value.into())
         }
     }
@@ -93,10 +93,10 @@ impl Display for Error {
     }
 }
 
-impl From<super::immap::Error> for Error {
-    fn from(value: super::immap::Error) -> Self {
+impl From<super::immutablemap::Error> for Error {
+    fn from(value: super::immutablemap::Error) -> Self {
         match value {
-            super::immap::Error::DupKey(key) => Error::DupKey(key),
+            super::immutablemap::Error::DupKey(key) => Error::DupKey(key),
         }
     }
 }
@@ -128,7 +128,7 @@ where
     T: Clone + PartialEq + Display + ExprOps;
 
 // TODO: Better implementation of ExprSet... This probably takes time to clone.
-pub type ExprSet<T> = ImMap<Expr<T>>;
+pub type ExprSet<T> = ImmutableMap<Expr<T>>;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum ExprBinOp {

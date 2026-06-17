@@ -18,9 +18,9 @@ impl Display for Error {
 type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct ImMap<T: Display + Clone + PartialEq>(BTreeMap<String, T>);
+pub struct ImmutableMap<T: Display + Clone + PartialEq>(BTreeMap<String, T>);
 
-impl<T> Display for ImMap<T>
+impl<T> Display for ImmutableMap<T>
 where
     T: Clone + PartialEq + Display,
 {
@@ -37,7 +37,7 @@ where
     }
 }
 
-impl<T> Default for ImMap<T>
+impl<T> Default for ImmutableMap<T>
 where
     T: Display + Clone + PartialEq,
 {
@@ -46,34 +46,34 @@ where
     }
 }
 
-impl<T> ImMap<T>
+impl<T> ImmutableMap<T>
 where
     T: Display + Clone + PartialEq,
 {
-    pub fn new() -> ImMap<T> {
+    pub fn new() -> ImmutableMap<T> {
         Self(BTreeMap::new())
     }
 
-    pub fn single(key: impl ToString, value: T) -> ImMap<T> {
+    pub fn single(key: impl ToString, value: T) -> ImmutableMap<T> {
         Self::new().set(key.to_string(), value).unwrap()
     }
 
-    pub fn from(fields: impl IntoIterator<Item = (impl ToString, T)>) -> Result<ImMap<T>> {
-        let mut ret: ImMap<T> = Default::default();
+    pub fn from(fields: impl IntoIterator<Item = (impl ToString, T)>) -> Result<ImmutableMap<T>> {
+        let mut ret: ImmutableMap<T> = Default::default();
         for (key, value) in fields {
             ret = ret.set(key.to_string(), value)?
         }
         Ok(ret)
     }
 
-    pub fn merge(self, other: &ImMap<T>) -> ImMap<T> {
+    pub fn merge(self, other: &ImmutableMap<T>) -> ImmutableMap<T> {
         let mut out = self.0;
         let mut to_update = other.0.clone();
         out.append(&mut to_update);
-        ImMap(out)
+        ImmutableMap(out)
     }
 
-    pub fn set(self, key: impl ToString, value: T) -> Result<ImMap<T>> {
+    pub fn set(self, key: impl ToString, value: T) -> Result<ImmutableMap<T>> {
         let mut map = self;
         map.set_mut(key.to_string(), value)?;
         Ok(map)
@@ -87,7 +87,7 @@ where
         }
     }
 
-    pub fn unset(self, key: &str) -> ImMap<T> {
+    pub fn unset(self, key: &str) -> ImmutableMap<T> {
         let mut map = self;
         map.0.remove(key);
         map
@@ -116,20 +116,20 @@ where
         self.0.iter().try_for_each(|(name, value)| f(name, value))
     }
 
-    pub fn map<B, F>(&self, f: F) -> ImMap<B>
+    pub fn map<B, F>(&self, f: F) -> ImmutableMap<B>
     where
         F: Fn(&T) -> B,
         B: Display + Clone + PartialEq,
     {
-        ImMap::from(self.0.iter().map(|(name, value)| (name.clone(), f(value)))).unwrap()
+        ImmutableMap::from(self.0.iter().map(|(name, value)| (name.clone(), f(value)))).unwrap()
     }
 
-    pub fn try_map<B, F, E>(&self, f: F) -> std::result::Result<ImMap<B>, E>
+    pub fn try_map<B, F, E>(&self, f: F) -> std::result::Result<ImmutableMap<B>, E>
     where
         F: Fn(&T) -> std::result::Result<B, E>,
         B: Display + Clone + PartialEq,
     {
-        Ok(ImMap::from(
+        Ok(ImmutableMap::from(
             self.0
                 .iter()
                 .map(|(name, value)| Ok((name.clone(), f(value)?)))

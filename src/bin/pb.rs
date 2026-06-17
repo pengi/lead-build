@@ -30,7 +30,7 @@ fn main() {
             exit(0);
         }
         Err(err) => {
-            println!("{}", err);
+            eprintln!("{}", err);
             exit(1);
         }
     }
