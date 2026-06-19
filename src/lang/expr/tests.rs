@@ -1,0 +1,458 @@
+use super::*;
+use super::{super::parser::parse_str, super::testvalue::TestValue, ExprType::Bind};
+
+fn eval(code: &str) -> Expr<TestValue> {
+    let expr: Expr<TestValue> = ExprType::Bind(ExprSet::new(), parse_str(code).unwrap()).into();
+    expr.eval().unwrap();
+    expr
+}
+
+#[test]
+fn test_resolve() -> Result<()> {
+    let expr = parse_str(
+        r#"
+                {
+                    stuff = "hello";
+                    something = "hej";
+                }
+            "#,
+    )
+    .unwrap();
+    let value = expr.get_item("stuff")?;
+    assert_eq!(value, Expr::from(TestValue::String("hello".into())));
+    Ok(())
+}
+
+#[test]
+fn test_eval_obj() {
+    assert_eq!(eval("{ a = (let x = 3; in x); }"), eval("{ a = 3; }"));
+}
+
+#[test]
+fn test_eval_list() {
+    assert_eq!(eval("[ (let x = 3; in x) ]"), eval("[ 3 ]"));
+}
+
+#[test]
+fn test_func_in_let_res() {
+    assert_eq!(eval("let a = x: (x+1); in (a 12)"), eval("13"));
+}
+
+#[test]
+fn test_resolve_deep() -> Result<()> {
+    // This also tests "inner" as prefixed for reserved keyword "in" is ok
+    let expr = parse_str(
+        r#"
+                {
+                    stuff = "hello";
+                    something = {
+                        inner = 55;
+                    };
+                }
+            "#,
+    )
+    .unwrap();
+    let value = expr.get_item("something")?.get_item("inner")?;
+    assert_eq!(value, Expr::from(TestValue::Int(55)));
+    Ok(())
+}
+
+#[test]
+fn test_let() {
+    assert_eq!(
+        eval("let x = 12; in (let a = 21; b = 37; in (a+x))"),
+        eval("33")
+    );
+}
+
+#[test]
+fn test_bind() {
+    assert_eq!(
+        eval("let x = 12; in (bind a = 21; b = 37; in a)"),
+        eval("21")
+    );
+}
+
+#[test]
+#[should_panic]
+fn test_bind_error() {
+    eval("let x = 12; in (bind a = 21; in x)");
+}
+
+#[test]
+fn test_invalid_var() -> Result<()> {
+    let expr: Expr<TestValue> =
+        ExprType::Bind(ExprSet::new(), parse_str("invalid_var").unwrap()).into();
+    if let Err(Error::Scope(message)) = expr.resolve() {
+        assert_eq!(message.as_str(), "Unknown variable invalid_var");
+    } else {
+        assert!(false);
+    }
+    Ok(())
+}
+
+#[test]
+fn test_let_set_var() {
+    assert_eq! {
+        eval(r#"
+                let
+                    a = 12;
+                in
+                {
+                    stuff = a;
+                }
+            "#),
+        eval("{ stuff = 12; }"),
+    }
+}
+
+#[test]
+fn test_let_set_var_seq() {
+    assert_eq! {
+        eval(r#"
+                let
+                    a = 12;
+                    b = a;
+                in
+                {
+                    stuff = b;
+                }
+            "#),
+        eval("{ stuff = 12; }"),
+    }
+}
+
+#[test]
+fn test_func_call() {
+    let func_a = parse_str("var: 13").unwrap();
+    let func_b = parse_str("var: 42").unwrap();
+    let call = parse_str("func_b 32").unwrap();
+    let varscope = ExprSet::from([("func_a".into(), func_a), ("func_b".into(), func_b)]);
+    let value: Expr<TestValue> = ExprType::Bind(varscope, call).into();
+    value.resolve().unwrap();
+    assert_eq!(value, Expr::from(TestValue::Int(42)));
+}
+
+#[test]
+fn test_func_call_var_arg() {
+    let func_var = parse_str("var: var").unwrap();
+    let arg_var = parse_str("32").unwrap();
+    let call = parse_str("func arg").unwrap();
+    let varscope = ExprSet::from([("func".into(), func_var), ("arg".into(), arg_var)]);
+    let value: Expr<TestValue> = ExprType::Bind(varscope, call).into();
+    value.resolve().unwrap();
+    assert_eq!(value, Expr::from(TestValue::Int(32)));
+}
+
+#[test]
+fn test_func_call_order() {
+    assert_eq! {
+        eval("let f = a: b: (a+b); in (f 3 4)"),
+        eval("7"),
+    }
+}
+
+#[test]
+fn test_func_call_resolved() {
+    assert_eq! {
+        eval(r#"
+                let
+                    a = 12;
+                    func = test: {
+                        var = test;
+                    };
+                in
+                {
+                    stuff = func a;
+                }
+            "#),
+        eval("{ stuff = { var = 12; }; }"),
+    }
+}
+
+#[test]
+fn test_func_call_bound() {
+    assert_eq! {
+        eval(r#"
+                let
+                    a = 12;
+                    func = test: {
+                        var = a;
+                    };
+                in
+                {
+                    stuff = func 77;
+                }
+            "#),
+        eval("{ stuff = { var = 12; }; }"),
+    }
+}
+
+#[test]
+fn test_func_call_resolved_stacked_let() {
+    assert_eq! {
+        eval(r#"
+                let
+                    a = 12;
+                in
+                let
+                    func = test: {
+                        var = test;
+                    };
+                in
+                {
+                    stuff = func a;
+                }
+            "#),
+        eval("{ stuff = { var = 12; }; }"),
+    }
+}
+
+#[test]
+fn test_func_call_pattern() {
+    assert_eq! {
+        eval(r#"
+                let
+                    a = 12;
+                    b = 13;
+                    func = { a, b, ... }: {
+                        var = b;
+                    };
+                in
+                {
+                    stuff = func {
+                        a = 15;
+                        b = 74;
+                    };
+                }
+            "#),
+        eval("{ stuff = { var = 74; }; }"),
+    }
+}
+
+#[test]
+fn test_var_through_func_call() {
+    // TODO: "let var = 3 in func var" should work, or give an error...
+    assert_eq! {
+        eval(r#"
+                let
+                    func = (a: a+2);
+                in
+                let
+                    myvar = 13;
+                in
+                (func myvar)
+            "#),
+        eval("15"),
+    }
+}
+
+#[test]
+fn test_eval() {
+    assert_eq! {
+        eval(r#"
+                let
+                    a = 12;
+                    b = { inner = 43; };
+                    myfunc = {target, ...}: { var = b; };
+                in
+                {
+                    app = myfunc {
+                        target = "app.elf";
+                    };
+                }
+            "#),
+        eval("{ app = { var = { inner = 43; }; }; }"),
+    }
+}
+
+#[test]
+fn test_arith() {
+    assert_eq! {
+        eval("2 * 3 + 4 * 5"),
+        eval("6 + 20"),
+    }
+    assert_eq! {
+        eval("6 + 20"),
+        eval("26"),
+    }
+}
+
+#[test]
+fn test_bool_op() {
+    assert_eq!(eval("false || 12"), eval("12"));
+    assert_eq!(eval("true || 12"), eval("true"));
+    assert_eq!(eval("false && 12"), eval("false"));
+    assert_eq!(eval("true && 12"), eval("12"));
+}
+
+#[test]
+fn test_bool_laziness() {
+    assert_eq!(eval("true || invalid_var"), eval("true"));
+    assert_eq!(eval("false && invalid_var"), eval("false"));
+    assert_eq!(eval("false -> invalid_var"), eval("true"));
+}
+
+#[test]
+fn test_bool_implication() {
+    assert_eq!(eval("false -> false"), eval("true"));
+    assert_eq!(eval("false -> true"), eval("true"));
+    assert_eq!(eval("true -> false"), eval("false"));
+    assert_eq!(eval("true -> true"), eval("true"));
+    assert_eq!(eval("false -> 12"), eval("true"));
+    assert_eq!(eval("true -> 12"), eval("12"));
+}
+
+#[test]
+fn test_bool_not() {
+    assert_eq!(eval("!true"), eval("false"));
+    assert_eq!(eval("!false"), eval("true"));
+}
+
+#[test]
+fn test_bool_neg() {
+    assert_eq!(eval("let a = 5; in (-a) + 3"), eval("-2"));
+}
+
+#[test]
+fn test_func_call_laziness() {
+    // The code contains an error; myfunc, which is not a function.
+    // It is intentional that the func should not be evaluated, since
+    // laziness in "false && ...", and therefore not be resolved as an
+    // error.
+    //
+    // Test evalutes that eval is successful rather than ethe actual output
+    assert_eq!(
+        eval(
+            r#"
+                let
+                    myfunc = not_a_function;
+                    lazy_func_call = myfunc 72;
+                in
+                    false && lazy_func_call
+                "#
+        ),
+        eval("false")
+    );
+}
+
+#[derive(Debug, Clone)]
+struct CountingBuiltin(Rc<RefCell<i32>>);
+impl CountingBuiltin {
+    fn new() -> CountingBuiltin {
+        CountingBuiltin(Rc::new(RefCell::new(0i32)))
+    }
+
+    fn get(&self) -> i32 {
+        *self.0.borrow()
+    }
+}
+
+impl ExprBuiltin<TestValue> for CountingBuiltin {
+    fn get_name(&self) -> String {
+        "mybuiltin".into()
+    }
+
+    fn call(&self, arg: Expr<TestValue>) -> ops::Result<Expr<TestValue>> {
+        let mut counter = self.0.borrow_mut();
+        *counter += 1;
+        Ok(arg)
+    }
+}
+
+#[test]
+fn test_parse_func_call_from_obj() {
+    assert_eq!(
+        eval("let lib = { func = a: a+3; }; in (lib.func 7)"),
+        eval("10")
+    );
+}
+
+#[test]
+fn test_multi_level_obj() {
+    assert_eq!(eval("let a = { b = { c = 3; }; }; in a.b.c"), eval("3"));
+}
+
+#[test]
+fn test_list_concat() {
+    assert_eq!(
+        eval("[1, 3, 5, 7] + [2, 4, 6, 8]"),
+        eval("[1, 3, 5, 7, 2, 4, 6, 8]")
+    );
+}
+
+#[test]
+fn test_list_commas() {
+    assert_eq!(eval("[1, 3, 5, 7,]"), eval("[1, 3, 5, 7]"));
+}
+
+#[test]
+fn test_list_comprehension() {
+    assert_eq!(eval("[ a: (a*2) <- [1, 2, 3] ]"), eval("[2, 4, 6]"));
+}
+
+#[test]
+fn test_div_precedence() {
+    assert_eq!(eval("8 / 2 / 2"), eval("2"));
+}
+
+#[test]
+fn test_sub_precedence() {
+    assert_eq!(eval("8 - 2 - 2"), eval("4"));
+}
+
+#[test]
+fn test_builtin_func() {
+    let code = "mybuiltin 10";
+
+    let builtins = ExprSet::from([(
+        "mybuiltin".into(),
+        Expr::new_builtin(Rc::new(CountingBuiltin::new())),
+    )]);
+    let expr: Expr<TestValue> = Bind(builtins, parse_str(code).unwrap()).into();
+    expr.eval().unwrap();
+    assert_eq!(expr, eval("10"));
+}
+
+#[test]
+fn test_builtin_func_laziness_multiple_calls() {
+    // Invoked in code twice should only be evaluated once
+    let code = r#"
+                let
+                    func_call = mybuiltin 10;
+                in
+                {
+                    a = func_call;
+                    b = func_call;
+                }
+            "#;
+    let counter = CountingBuiltin::new();
+    let builtins = ExprSet::from([(
+        "mybuiltin".into(),
+        Expr::new_builtin(Rc::new(counter.clone())),
+    )]);
+    let expr: Expr<TestValue> = Bind(builtins, parse_str(code).unwrap()).into();
+    expr.eval().unwrap();
+    assert_eq!(expr, eval("{ a = 10; b = 10; }"));
+    assert_eq!(counter.get(), 1);
+}
+
+#[test]
+fn test_builtin_func_laziness_no_calls() {
+    // Invoked in code twice should only be evaluated once
+    let code = r#"
+                let
+                    func_call = mybuiltin 10;
+                in
+                {}
+            "#;
+    let counter = CountingBuiltin::new();
+    let builtins = ExprSet::from([(
+        "mybuiltin".into(),
+        Expr::new_builtin(Rc::new(counter.clone())),
+    )]);
+    let expr: Expr<TestValue> = Bind(builtins, parse_str(code).unwrap()).into();
+    expr.eval().unwrap();
+    assert_eq!(expr, eval("{}"));
+    assert_eq!(counter.get(), 0);
+}

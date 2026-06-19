@@ -144,6 +144,7 @@ ExprTerm: Expr<T> = {
     <List>,
     <Value>,
     <Let>,
+    <Bind>,
     <Variable>,
     "(" <Expr> ")"
 };
@@ -163,6 +164,7 @@ Comma<T>: Vec<T> = { // (1)
 };
 
 Let: Expr<T> = "let" <s:SetStmt*> "in" <e:ExprTerm> => ExprType::Let(s, e).into();
+Bind: Expr<T> = "bind" <s:SetStmt*> "in" <e:ExprTerm> => ExprType::Bind(s.into_iter().collect(), e).into();
 SetStmt: (String, Expr<T>) = <i:Ident> "=" <e:Expr> ";" => (i, e);
 
 Variable: Expr<T> = <s:Ident> => ExprType::Var(s).into();

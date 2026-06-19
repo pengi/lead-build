@@ -186,7 +186,7 @@ impl ExprBuiltin<Value> for BuiltinPbRule {
         let mut rule_args: BTreeSet<String> = BTreeSet::new();
 
         /* Identify arguments */
-        let args = match arg.as_ref().try_as_func_def_pattern_ref() {
+        let args = match arg.inner_ref().try_as_func_def_pattern_ref() {
             Some((items, _expr)) => Ok(items.clone()),
             None => Err(crate::lang::ops::Error::Type(
                 "pb.rule needs to take a pattern function as argument".into(),
@@ -219,7 +219,7 @@ impl ExprBuiltin<Value> for BuiltinPbRule {
         rule_func.resolve()?;
 
         /* Read variables */
-        let objargs = match rule_func.as_ref().try_as_object_ref() {
+        let objargs = match rule_func.inner_ref().try_as_object_ref() {
             Some(args) => Ok(args.clone()),
             None => Err(crate::lang::ops::Error::Type(format!(
                 "pb.rule function needs to return an object, got {}",
@@ -231,7 +231,7 @@ impl ExprBuiltin<Value> for BuiltinPbRule {
         let mut vars: Vec<(String, Vec<NinjaArg>)> = Vec::new();
         for (name, expr) in objargs.into_iter() {
             expr.resolve()?;
-            let attrs = match &*expr.as_ref() {
+            let attrs = match &*expr.inner_ref() {
                 ExprType::List(exprs) => exprs.clone(),
                 ExprType::Value(value) => vec![value.clone().into()],
                 _ => panic!("pb.rule function needs to return an object"),
@@ -240,7 +240,7 @@ impl ExprBuiltin<Value> for BuiltinPbRule {
                 .into_iter()
                 .map(|e| {
                     e.resolve().unwrap();
-                    match &*e.as_ref() {
+                    match &*e.inner_ref() {
                         ExprType::Value(attr) => value_to_ninja_arg(attr),
                         _ => panic!("Rule attr is not a value"),
                     }
@@ -273,7 +273,11 @@ impl ExprBuiltin<Value> for BuiltinPbBuild {
             || crate::lang::ops::Error::Type(format!("unknown arg for pb.build, got {}", arg));
 
         /* Read arguments from input object */
-        let mut arg_obj = arg.as_ref().clone().try_as_object().ok_or_else(opt_err)?;
+        let mut arg_obj = arg
+            .inner_ref()
+            .clone()
+            .try_as_object()
+            .ok_or_else(opt_err)?;
         let rule = expr_get_arg!(arg_obj, "rule", try_as_build_rule);
 
         /* Read all variables required by rule */
@@ -291,7 +295,7 @@ impl ExprBuiltin<Value> for BuiltinPbBuild {
 
             let mut value: Vec<NinjaArg> = vec![];
 
-            let elems: Vec<Expr<Value>> = match &*build_arg.as_ref() {
+            let elems: Vec<Expr<Value>> = match &*build_arg.inner_ref() {
                 ExprType::List(exprs) => Ok(exprs.clone()),
                 ExprType::Value(value) => Ok(vec![value.clone().into()]),
                 _ => Err(crate::lang::ops::Error::Type(format!(
@@ -302,7 +306,7 @@ impl ExprBuiltin<Value> for BuiltinPbBuild {
 
             for elem in elems.into_iter() {
                 elem.resolve()?;
-                value.push(match &*elem.as_ref() {
+                value.push(match &*elem.inner_ref() {
                     ExprType::Value(attr) => {
                         if let Value::Build(build) = attr {
                             deps.push(build.clone());

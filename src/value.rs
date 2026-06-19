@@ -4,7 +4,7 @@ use strum::EnumTryAs;
 
 use crate::{
     lang::{
-        ParsableValue,
+        Exportable, ParsableValue,
         ops::{Error, ExprOps, Result},
     },
     path::VirtPath,
@@ -24,8 +24,8 @@ pub enum Value {
     BuildConcat(Vec<Value>),
 }
 
-impl Display for Value {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Exportable for Value {
+    fn export(&self, _indent: i32, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Value::Int(v) => v.fmt(f),
             Value::String(v) => write!(f, "\"{}\"", v),
@@ -41,6 +41,12 @@ impl Display for Value {
                 Ok(())
             }
         }
+    }
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.export(0, f)
     }
 }
 

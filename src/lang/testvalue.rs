@@ -1,5 +1,6 @@
 use std::fmt::Display;
 
+use super::Exportable;
 use strum::EnumTryAs;
 
 use super::{
@@ -14,13 +15,19 @@ pub enum TestValue {
     Bool(bool),
 }
 
-impl Display for TestValue {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl super::Exportable for TestValue {
+    fn export(&self, _indent: i32, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TestValue::Int(v) => v.fmt(f),
             TestValue::String(v) => v.fmt(f),
             TestValue::Bool(v) => v.fmt(f),
         }
+    }
+}
+
+impl Display for TestValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.export(0, f)
     }
 }
 

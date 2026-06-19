@@ -110,11 +110,8 @@ impl LangContext {
         let file_expr = self.read_file(&fs_path)?;
         let file_args = self.setup_file_args(file)?;
         let file_builtins = self.setup_file_builtins()?;
-        let called_expr: Expr<Value> = ExprType::FuncCall(
-            ExprType::BoundExpr(file_builtins, file_expr).into(),
-            file_args,
-        )
-        .into();
+        let called_expr: Expr<Value> =
+            ExprType::FuncCall(ExprType::Bind(file_builtins, file_expr).into(), file_args).into();
         Ok(called_expr)
     }
 }

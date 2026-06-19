@@ -7,7 +7,7 @@ mod stringdecode;
 mod testvalue;
 
 pub use error::{Error, Result};
-pub use expr::{Expr, ExprSet, ExprType};
+pub use expr::{Exportable, Expr, ExprSet, ExprType};
 pub use parser::{ParsableValue, parse_str};
 
 pub mod ops {

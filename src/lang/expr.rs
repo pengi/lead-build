@@ -1,3 +1,9 @@
+mod export;
+pub use export::Exportable;
+
+#[cfg(test)]
+mod tests;
+
 use std::{
     cell::{Ref, RefCell},
     collections::BTreeMap,
@@ -165,7 +171,7 @@ where
     Let(Vec<(String, Expr<T>)>, Expr<T>),
     MapList(Expr<T>, Expr<T>),
     FuncCall(Expr<T>, Expr<T>),
-    BoundExpr(ExprSet<T>, Expr<T>),
+    Bind(ExprSet<T>, Expr<T>),
     #[default]
     Null,
 }
@@ -217,89 +223,19 @@ impl Display for ExprUnOp {
 
 impl<T> Display for Expr<T>
 where
-    T: Clone + PartialEq + Display + ExprOps,
+    T: Clone + PartialEq + Display + ExprOps + Debug + Exportable,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.as_ref().borrow().fmt(f)
+        self.export(0, f)
     }
 }
 
 impl<T> Display for ExprType<T>
 where
-    T: Clone + PartialEq + Display + ExprOps,
+    T: Clone + PartialEq + Display + ExprOps + Debug + Exportable,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ExprType::Object(varscope) => {
-                f.write_str("{ ")?;
-                for (key, value) in varscope.iter() {
-                    f.write_str(key)?;
-                    f.write_str(" = ")?;
-                    value.fmt(f)?;
-                    f.write_str("; ")?;
-                }
-                f.write_str("}")?;
-                Ok(())
-            }
-            ExprType::List(items) => {
-                write!(f, "[")?;
-                for item in items.iter() {
-                    write!(f, " {}", item)?;
-                }
-                write!(f, " ]")?;
-                Ok(())
-            }
-            ExprType::AttrSel(val, attr) => write!(f, "{}.{}", val, attr),
-            ExprType::Value(val) => val.fmt(f),
-            ExprType::Var(val) => Display::fmt(&val, f),
-            ExprType::UnOp(op, expr) => {
-                write!(f, "{}({})", op, expr)
-            }
-            ExprType::BinOp(op, lhs, rhs) => {
-                write!(f, "({}){}({})", lhs, op, rhs)
-            }
-            ExprType::FuncDefIdent(name, expr) => write!(f, "{}: {}", name, expr),
-            ExprType::FuncDefPattern(items, expr) => {
-                f.write_str("{")?;
-                for item in items {
-                    Display::fmt(&item, f)?;
-                    f.write_str(", ")?;
-                }
-                f.write_str("...}: ")?;
-                expr.fmt(f)?;
-                Ok(())
-            }
-            ExprType::Let(items, expr) => {
-                f.write_str("let ")?;
-                for (var_name, var_expr) in items {
-                    std::fmt::Display::fmt(&var_name, f)?;
-                    f.write_str("=")?;
-                    std::fmt::Display::fmt(&var_expr, f)?;
-                    f.write_str("; ")?;
-                }
-                f.write_str("in ")?;
-                expr.fmt(f)?;
-                Ok(())
-            }
-            ExprType::MapList(func, input) => {
-                write!(f, "[ {} <- {} ]", func, input)
-            }
-            ExprType::FuncCall(fexpr, farg) => write!(f, "{} {}", fexpr, farg),
-            ExprType::BoundExpr(scope, expr) => {
-                write!(f, "[")?;
-                for (name, expr) in scope.iter() {
-                    write!(f, " {}={}", name, expr)?;
-                }
-                write!(f, " @ ")?;
-                expr.fmt(f)?;
-                write!(f, " ]")?;
-                Ok(())
-            }
-            ExprType::FuncDefBuiltin(ExprBuiltinWrapper(name, _)) => {
-                write!(f, "<builtin {}>", name)
-            }
-            ExprType::Null => write!(f, "null"),
-        }
+        self.export(0, f)
     }
 }
 
@@ -366,9 +302,9 @@ where
 
 impl<T> Expr<T>
 where
-    T: Clone + PartialEq + Display + ExprOps + Debug,
+    T: Clone + PartialEq + Display + ExprOps + Debug + Exportable,
 {
-    pub fn as_ref(&self) -> Ref<'_, ExprType<T>> {
+    pub fn inner_ref(&self) -> Ref<'_, ExprType<T>> {
         self.0.as_ref().borrow()
     }
 
@@ -389,18 +325,18 @@ where
             ExprType::Let(..) => true,
             ExprType::MapList(..) => true,
             ExprType::FuncCall(..) => true,
-            ExprType::BoundExpr(..) => true,
+            ExprType::Bind(..) => true,
             ExprType::Null => false,
         } {
             expr = match expr {
-                ExprType::BoundExpr(varspace, bound_expr) => match &*bound_expr.as_ref() {
+                ExprType::Bind(varspace, bound_expr) => match &*bound_expr.inner_ref() {
                     ExprType::Object(fields) => Ok(ExprType::Object(
                         fields
                             .iter()
                             .map(|(k, val)| {
                                 (
                                     k.clone(),
-                                    ExprType::BoundExpr(varspace.clone(), val.clone()).into(),
+                                    ExprType::Bind(varspace.clone(), val.clone()).into(),
                                 )
                             })
                             .collect(),
@@ -408,11 +344,11 @@ where
                     ExprType::List(items) => Ok(ExprType::List(
                         items
                             .iter()
-                            .map(|item| ExprType::BoundExpr(varspace.clone(), item.clone()).into())
+                            .map(|item| ExprType::Bind(varspace.clone(), item.clone()).into())
                             .collect(),
                     )),
                     ExprType::AttrSel(val, attr) => Ok(ExprType::AttrSel(
-                        ExprType::BoundExpr(varspace, val.clone()).into(),
+                        ExprType::Bind(varspace, val.clone()).into(),
                         attr.clone(),
                     )),
                     ExprType::Let(fields, target_expr) => {
@@ -421,18 +357,18 @@ where
                             let field_vars = vars.clone();
                             vars.insert(
                                 field_name.clone(),
-                                ExprType::BoundExpr(field_vars, field_expr.clone()).into(),
+                                ExprType::Bind(field_vars, field_expr.clone()).into(),
                             )
                             .map_or_else(|| Ok(()), |_| Err(Error::DupKey(field_name.clone())))?;
                         }
-                        Ok(ExprType::BoundExpr(vars, target_expr.clone()))
+                        Ok(ExprType::Bind(vars, target_expr.clone()))
                     }
                     ExprType::FuncDefIdent(arg_name, func_expr) => {
                         let mut new_scope = varspace;
                         new_scope.remove(arg_name);
                         Ok(ExprType::FuncDefIdent(
                             arg_name.clone(),
-                            ExprType::BoundExpr(new_scope, func_expr.clone()).into(),
+                            ExprType::Bind(new_scope, func_expr.clone()).into(),
                         ))
                     }
                     ExprType::FuncDefPattern(items, expr) => {
@@ -442,13 +378,13 @@ where
                         }
                         Ok(ExprType::FuncDefPattern(
                             items.clone(),
-                            ExprType::BoundExpr(new_scope, expr.clone()).into(),
+                            ExprType::Bind(new_scope, expr.clone()).into(),
                         ))
                     }
                     ExprType::FuncDefBuiltin(_expr_builtin) => todo!(),
                     ExprType::MapList(func, input) => Ok(ExprType::MapList(
-                        ExprType::BoundExpr(varspace.clone(), func.clone()).into(),
-                        ExprType::BoundExpr(varspace.clone(), input.clone()).into(),
+                        ExprType::Bind(varspace.clone(), func.clone()).into(),
+                        ExprType::Bind(varspace.clone(), input.clone()).into(),
                     )),
                     ExprType::Var(name) => match &varspace.get(name) {
                         Some(value) => Ok(value.res_type()?.clone()),
@@ -456,26 +392,26 @@ where
                     },
                     ExprType::UnOp(op, expr) => Ok(ExprType::UnOp(
                         *op,
-                        ExprType::BoundExpr(varspace, expr.clone()).into(),
+                        ExprType::Bind(varspace, expr.clone()).into(),
                     )),
                     ExprType::BinOp(op, lhs, rhs) => Ok(ExprType::BinOp(
                         *op,
-                        ExprType::BoundExpr(varspace.clone(), lhs.clone()).into(),
-                        ExprType::BoundExpr(varspace, rhs.clone()).into(),
+                        ExprType::Bind(varspace.clone(), lhs.clone()).into(),
+                        ExprType::Bind(varspace, rhs.clone()).into(),
                     )),
                     ExprType::FuncCall(fexpr, fargs) => Ok(ExprType::FuncCall(
-                        ExprType::BoundExpr(varspace.clone(), fexpr.clone()).into(),
-                        ExprType::BoundExpr(varspace, fargs.clone()).into(),
+                        ExprType::Bind(varspace.clone(), fexpr.clone()).into(),
+                        ExprType::Bind(varspace, fargs.clone()).into(),
                     )),
                     ExprType::Value(value) => Ok(ExprType::Value(value.clone())),
-                    ExprType::BoundExpr(inner_vars, inner_expr) => {
-                        Ok(ExprType::BoundExpr(inner_vars.clone(), inner_expr.clone()))
+                    ExprType::Bind(inner_vars, inner_expr) => {
+                        Ok(ExprType::Bind(inner_vars.clone(), inner_expr.clone()))
                     }
                     ExprType::Null => panic!("Found null in expr tree"),
                 },
                 ExprType::AttrSel(val, attr) => {
                     let attr_expr = val.get_item(attr.as_str())?;
-                    Ok(attr_expr.as_ref().clone())
+                    Ok(attr_expr.inner_ref().clone())
                 }
                 ExprType::FuncCall(fexpr, fargs) => {
                     let (mut args, func_expr): (ExprSet<T>, Expr<T>) = match &*fexpr.res_type()? {
@@ -488,9 +424,10 @@ where
                             let mut new_vars = ExprSet::new();
                             for arg_name in arg_names {
                                 let arg_value = fargs.get_item(arg_name)?;
-                                new_vars
-                                    .insert(arg_name.clone(), arg_value)
-                                    .map_or_else(|| Ok(()), |_| Err(Error::DupKey(arg_name.clone())))?;
+                                new_vars.insert(arg_name.clone(), arg_value).map_or_else(
+                                    || Ok(()),
+                                    |_| Err(Error::DupKey(arg_name.clone())),
+                                )?;
                             }
                             Ok((new_vars, fimpl.clone()))
                         }
@@ -503,18 +440,18 @@ where
 
                     // If function contains a bound scope, it should still apply,
                     // and not overwrite input arguments.
-                    match &*func_expr.as_ref() {
-                        ExprType::BoundExpr(varspace, inner_expr) => {
+                    match &*func_expr.inner_ref() {
+                        ExprType::Bind(varspace, inner_expr) => {
                             let mut merged_varspace = varspace.clone();
                             merged_varspace.append(&mut args);
-                            Ok(ExprType::BoundExpr(merged_varspace, inner_expr.clone()))
+                            Ok(ExprType::Bind(merged_varspace, inner_expr.clone()))
                         }
-                        _ => Ok(ExprType::BoundExpr(args, func_expr.clone())),
+                        _ => Ok(ExprType::Bind(args, func_expr.clone())),
                     }
                 }
                 ExprType::MapList(func, input) => {
                     input.resolve()?;
-                    match &*input.as_ref() {
+                    match &*input.inner_ref() {
                         ExprType::List(input_vec) => Ok(ExprType::List(
                             input_vec
                                 .iter()
@@ -527,11 +464,11 @@ where
                 ExprType::UnOp(op, expr) => {
                     expr.resolve()?;
                     match op {
-                        ExprUnOp::Neg => match &*expr.as_ref() {
+                        ExprUnOp::Neg => match &*expr.inner_ref() {
                             ExprType::Value(value) => Ok(ExprType::Value(value.op_neg()?)),
                             _ => Err(Error::Eval(format!("negating non-value: {}", expr))),
                         },
-                        ExprUnOp::Not => match &*expr.as_ref() {
+                        ExprUnOp::Not => match &*expr.inner_ref() {
                             ExprType::Value(value) => Ok(ExprType::Value(value.op_not()?)),
                             _ => Err(Error::Eval(format!("negating non-value: {}", expr))),
                         },
@@ -596,12 +533,12 @@ where
 
     fn res_type(&self) -> Result<Ref<'_, ExprType<T>>> {
         self.resolve()?;
-        Ok(self.as_ref())
+        Ok(self.inner_ref())
     }
 
     pub fn eval(&self) -> Result<()> {
         self.resolve()?;
-        match &*self.as_ref() {
+        match &*self.inner_ref() {
             ExprType::Object(fields) => {
                 for (_, field) in fields.iter() {
                     field.eval()?;
@@ -620,7 +557,7 @@ where
     pub fn value(&self) -> Result<T> {
         // Since we expect a string, we only need to resolve one level.
         self.resolve()?;
-        match &*self.as_ref() {
+        match &*self.inner_ref() {
             ExprType::Value(val) => Ok(val.clone()),
             _ => Err(Error::NoValue(format!("Not a value: {}", self))),
         }
@@ -629,7 +566,7 @@ where
     pub fn eval_string(&self) -> Result<String> {
         // Since we expect a string, we only need to resolve one level.
         self.resolve()?;
-        match &*self.as_ref() {
+        match &*self.inner_ref() {
             ExprType::Value(val) => Ok(val.as_string()?),
             _ => Err(Error::NoValue(format!("Not a string: {}", self))),
         }
@@ -637,7 +574,7 @@ where
 
     pub fn get_item(&self, name: &str) -> Result<Expr<T>> {
         self.resolve()?;
-        let node = self.as_ref();
+        let node = self.inner_ref();
         match &*node {
             ExprType::Object(vars) => Ok(vars
                 .get(name)
@@ -665,462 +602,5 @@ where
         }
 
         exprset.into()
-    }
-}
-
-impl<T> ExprType<T> where T: Clone + PartialEq + Display + ExprOps + Debug {}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use super::{super::parser::parse_str, super::testvalue::TestValue, ExprType::BoundExpr};
-
-    fn eval(code: &str) -> Expr<TestValue> {
-        let expr: Expr<TestValue> =
-            ExprType::BoundExpr(ExprSet::new(), parse_str(code).unwrap()).into();
-        expr.eval().unwrap();
-        expr
-    }
-
-    #[test]
-    fn test_resolve() -> Result<()> {
-        let expr = parse_str(
-            r#"
-                {
-                    stuff = "hello";
-                    something = "hej";
-                }
-            "#,
-        )
-        .unwrap();
-        let value = expr.get_item("stuff")?;
-        assert_eq!(value, Expr::from(TestValue::String("hello".into())));
-        Ok(())
-    }
-
-    #[test]
-    fn test_eval_obj() {
-        assert_eq!(eval("{ a = (let x = 3; in x); }"), eval("{ a = 3; }"));
-    }
-
-    #[test]
-    fn test_eval_list() {
-        assert_eq!(eval("[ (let x = 3; in x) ]"), eval("[ 3 ]"));
-    }
-
-    #[test]
-    fn test_func_in_let_res() {
-        assert_eq!(eval("let a = x: (x+1); in (a 12)"), eval("13"));
-    }
-
-    #[test]
-    fn test_resolve_deep() -> Result<()> {
-        // This also tests "inner" as prefixed for reserved keyword "in" is ok
-        let expr = parse_str(
-            r#"
-                {
-                    stuff = "hello";
-                    something = {
-                        inner = 55;
-                    };
-                }
-            "#,
-        )
-        .unwrap();
-        let value = expr.get_item("something")?.get_item("inner")?;
-        assert_eq!(value, Expr::from(TestValue::Int(55)));
-        Ok(())
-    }
-
-    #[test]
-    fn test_let() {
-        let value = eval(
-            r#"
-                let
-                    a = 12;
-                    b = 75;
-                in
-                b
-            "#,
-        );
-        assert_eq!(value, Expr::from(TestValue::Int(75)));
-    }
-
-    #[test]
-    fn test_invalid_var() -> Result<()> {
-        let expr: Expr<TestValue> =
-            ExprType::BoundExpr(ExprSet::new(), parse_str("invalid_var").unwrap()).into();
-        if let Err(Error::Scope(message)) = expr.resolve() {
-            assert_eq!(message.as_str(), "Unknown variable invalid_var");
-        } else {
-            assert!(false);
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn test_let_set_var() {
-        assert_eq! {
-            eval(r#"
-                let
-                    a = 12;
-                in
-                {
-                    stuff = a;
-                }
-            "#),
-            eval("{ stuff = 12; }"),
-        }
-    }
-
-    #[test]
-    fn test_let_set_var_seq() {
-        assert_eq! {
-            eval(r#"
-                let
-                    a = 12;
-                    b = a;
-                in
-                {
-                    stuff = b;
-                }
-            "#),
-            eval("{ stuff = 12; }"),
-        }
-    }
-
-    #[test]
-    fn test_func_call() {
-        let func_a = parse_str("var: 13").unwrap();
-        let func_b = parse_str("var: 42").unwrap();
-        let call = parse_str("func_b 32").unwrap();
-        let varscope = ExprSet::from([("func_a".into(), func_a), ("func_b".into(), func_b)]);
-        let value: Expr<TestValue> = ExprType::BoundExpr(varscope, call).into();
-        value.resolve().unwrap();
-        assert_eq!(value, Expr::from(TestValue::Int(42)));
-    }
-
-    #[test]
-    fn test_func_call_var_arg() {
-        let func_var = parse_str("var: var").unwrap();
-        let arg_var = parse_str("32").unwrap();
-        let call = parse_str("func arg").unwrap();
-        let varscope = ExprSet::from([("func".into(), func_var), ("arg".into(), arg_var)]);
-        let value: Expr<TestValue> = ExprType::BoundExpr(varscope, call).into();
-        value.resolve().unwrap();
-        assert_eq!(value, Expr::from(TestValue::Int(32)));
-    }
-
-    #[test]
-    fn test_func_call_order() {
-        assert_eq! {
-            eval("let f = a: b: (a+b); in (f 3 4)"),
-            eval("7"),
-        }
-    }
-
-    #[test]
-    fn test_func_call_resolved() {
-        assert_eq! {
-            eval(r#"
-                let
-                    a = 12;
-                    func = test: {
-                        var = test;
-                    };
-                in
-                {
-                    stuff = func a;
-                }
-            "#),
-            eval("{ stuff = { var = 12; }; }"),
-        }
-    }
-
-    #[test]
-    fn test_func_call_bound() {
-        assert_eq! {
-            eval(r#"
-                let
-                    a = 12;
-                    func = test: {
-                        var = a;
-                    };
-                in
-                {
-                    stuff = func 77;
-                }
-            "#),
-            eval("{ stuff = { var = 12; }; }"),
-        }
-    }
-
-    #[test]
-    fn test_func_call_resolved_stacked_let() {
-        assert_eq! {
-            eval(r#"
-                let
-                    a = 12;
-                in
-                let
-                    func = test: {
-                        var = test;
-                    };
-                in
-                {
-                    stuff = func a;
-                }
-            "#),
-            eval("{ stuff = { var = 12; }; }"),
-        }
-    }
-
-    #[test]
-    fn test_func_call_pattern() {
-        assert_eq! {
-            eval(r#"
-                let
-                    a = 12;
-                    b = 13;
-                    func = { a, b, ... }: {
-                        var = b;
-                    };
-                in
-                {
-                    stuff = func {
-                        a = 15;
-                        b = 74;
-                    };
-                }
-            "#),
-            eval("{ stuff = { var = 74; }; }"),
-        }
-    }
-
-    #[test]
-    fn test_var_through_func_call() {
-        // TODO: "let var = 3 in func var" should work, or give an error...
-        assert_eq! {
-            eval(r#"
-                let
-                    func = (a: a+2);
-                in
-                let
-                    myvar = 13;
-                in
-                (func myvar)
-            "#),
-            eval("15"),
-        }
-    }
-
-    #[test]
-    fn test_eval() {
-        assert_eq! {
-            eval(r#"
-                let
-                    a = 12;
-                    b = { inner = 43; };
-                    myfunc = {target, ...}: { var = b; };
-                in
-                {
-                    app = myfunc {
-                        target = "app.elf";
-                    };
-                }
-            "#),
-            eval("{ app = { var = { inner = 43; }; }; }"),
-        }
-    }
-
-    #[test]
-    fn test_arith() {
-        assert_eq! {
-            eval("2 * 3 + 4 * 5"),
-            eval("6 + 20"),
-        }
-        assert_eq! {
-            eval("6 + 20"),
-            eval("26"),
-        }
-    }
-
-    #[test]
-    fn test_bool_op() {
-        assert_eq!(eval("false || 12"), eval("12"));
-        assert_eq!(eval("true || 12"), eval("true"));
-        assert_eq!(eval("false && 12"), eval("false"));
-        assert_eq!(eval("true && 12"), eval("12"));
-    }
-
-    #[test]
-    fn test_bool_laziness() {
-        assert_eq!(eval("true || invalid_var"), eval("true"));
-        assert_eq!(eval("false && invalid_var"), eval("false"));
-        assert_eq!(eval("false -> invalid_var"), eval("true"));
-    }
-
-    #[test]
-    fn test_bool_implication() {
-        assert_eq!(eval("false -> false"), eval("true"));
-        assert_eq!(eval("false -> true"), eval("true"));
-        assert_eq!(eval("true -> false"), eval("false"));
-        assert_eq!(eval("true -> true"), eval("true"));
-        assert_eq!(eval("false -> 12"), eval("true"));
-        assert_eq!(eval("true -> 12"), eval("12"));
-    }
-
-    #[test]
-    fn test_bool_not() {
-        assert_eq!(eval("!true"), eval("false"));
-        assert_eq!(eval("!false"), eval("true"));
-    }
-
-    #[test]
-    fn test_bool_neg() {
-        assert_eq!(eval("let a = 5; in (-a) + 3"), eval("-2"));
-    }
-
-    #[test]
-    fn test_func_call_laziness() {
-        // The code contains an error; myfunc, which is not a function.
-        // It is intentional that the func should not be evaluated, since
-        // laziness in "false && ...", and therefore not be resolved as an
-        // error.
-        //
-        // Test evalutes that eval is successful rather than ethe actual output
-        assert_eq!(
-            eval(
-                r#"
-                let
-                    myfunc = not_a_function;
-                    lazy_func_call = myfunc 72;
-                in
-                    false && lazy_func_call
-                "#
-            ),
-            eval("false")
-        );
-    }
-
-    #[derive(Debug, Clone)]
-    struct CountingBuiltin(Rc<RefCell<i32>>);
-    impl CountingBuiltin {
-        fn new() -> CountingBuiltin {
-            CountingBuiltin(Rc::new(RefCell::new(0i32)))
-        }
-
-        fn get(&self) -> i32 {
-            *self.0.borrow()
-        }
-    }
-
-    impl ExprBuiltin<TestValue> for CountingBuiltin {
-        fn get_name(&self) -> String {
-            "mybuiltin".into()
-        }
-
-        fn call(&self, arg: Expr<TestValue>) -> ops::Result<Expr<TestValue>> {
-            let mut counter = self.0.borrow_mut();
-            *counter += 1;
-            Ok(arg)
-        }
-    }
-
-    #[test]
-    fn test_parse_func_call_from_obj() {
-        assert_eq!(
-            eval("let lib = { func = a: a+3; }; in (lib.func 7)"),
-            eval("10")
-        );
-    }
-
-    #[test]
-    fn test_multi_level_obj() {
-        assert_eq!(eval("let a = { b = { c = 3; }; }; in a.b.c"), eval("3"));
-    }
-
-    #[test]
-    fn test_list_concat() {
-        assert_eq!(
-            eval("[1, 3, 5, 7] + [2, 4, 6, 8]"),
-            eval("[1, 3, 5, 7, 2, 4, 6, 8]")
-        );
-    }
-
-    #[test]
-    fn test_list_commas() {
-        assert_eq!(eval("[1, 3, 5, 7,]"), eval("[1, 3, 5, 7]"));
-    }
-
-    #[test]
-    fn test_list_comprehension() {
-        assert_eq!(eval("[ a: (a*2) <- [1, 2, 3] ]"), eval("[2, 4, 6]"));
-    }
-
-    #[test]
-    fn test_div_precedence() {
-        assert_eq!(eval("8 / 2 / 2"), eval("2"));
-    }
-
-    #[test]
-    fn test_sub_precedence() {
-        assert_eq!(eval("8 - 2 - 2"), eval("4"));
-    }
-
-    #[test]
-    fn test_builtin_func() {
-        let code = "mybuiltin 10";
-
-        let builtins = ExprSet::from([(
-            "mybuiltin".into(),
-            Expr::new_builtin(Rc::new(CountingBuiltin::new())),
-        )]);
-        let expr: Expr<TestValue> = BoundExpr(builtins, parse_str(code).unwrap()).into();
-        expr.eval().unwrap();
-        assert_eq!(expr, eval("10"));
-    }
-
-    #[test]
-    fn test_builtin_func_laziness_multiple_calls() {
-        // Invoked in code twice should only be evaluated once
-        let code = r#"
-                let
-                    func_call = mybuiltin 10;
-                in
-                {
-                    a = func_call;
-                    b = func_call;
-                }
-            "#;
-        let counter = CountingBuiltin::new();
-        let builtins = ExprSet::from([(
-            "mybuiltin".into(),
-            Expr::new_builtin(Rc::new(counter.clone())),
-        )]);
-        let expr: Expr<TestValue> = BoundExpr(builtins, parse_str(code).unwrap()).into();
-        expr.eval().unwrap();
-        assert_eq!(expr, eval("{ a = 10; b = 10; }"));
-        assert_eq!(counter.get(), 1);
-    }
-
-    #[test]
-    fn test_builtin_func_laziness_no_calls() {
-        // Invoked in code twice should only be evaluated once
-        let code = r#"
-                let
-                    func_call = mybuiltin 10;
-                in
-                {}
-            "#;
-        let counter = CountingBuiltin::new();
-        let builtins = ExprSet::from([(
-            "mybuiltin".into(),
-            Expr::new_builtin(Rc::new(counter.clone())),
-        )]);
-        let expr: Expr<TestValue> = BoundExpr(builtins, parse_str(code).unwrap()).into();
-        expr.eval().unwrap();
-        assert_eq!(expr, eval("{}"));
-        assert_eq!(counter.get(), 0);
     }
 }
