@@ -171,16 +171,20 @@ fn value_to_ninja_arg(attr: &Value) -> NinjaArg {
 #[derive(Debug)]
 pub struct BuiltinPbRule;
 
-impl ExprBuiltin<Value> for BuiltinPbRule {
+impl<F> ExprBuiltin<Value, F> for BuiltinPbRule
+where
+    F: Clone,
+{
     fn get_name(&self) -> String {
         "build".into()
     }
 
     fn call(
         &self,
-        arg: crate::lang::Expr<Value>,
-    ) -> crate::lang::ops::Result<crate::lang::Expr<Value>> {
+        arg: crate::lang::Expr<Value, F>,
+    ) -> crate::lang::ops::Result<crate::lang::Expr<Value, F>> {
         arg.resolve()?;
+        let loc = arg.get_loc();
 
         /* Initialize meta variables, that may change later */
         let mut rule_args: BTreeSet<String> = BTreeSet::new();
@@ -203,19 +207,19 @@ impl ExprBuiltin<Value> for BuiltinPbRule {
                 /* Generate element */
                 (
                     name.clone(),
-                    Value::BuildVar(match name.as_str() {
+                    ExprType::from(Value::BuildVar(match name.as_str() {
                         "input" => "in".into(),
                         "output" => "out".into(),
                         _ => name.clone(),
-                    })
-                    .into(),
+                    }))
+                    .reref(loc.clone()),
                 )
             })
-            .collect::<ExprSet<Value>>()
+            .collect::<ExprSet<Value, F>>()
             .into();
 
         /* Generate rule function with variable placeholders and call */
-        let rule_func: Expr<Value> = ExprType::FuncCall(arg, var_obj).into();
+        let rule_func: Expr<Value, F> = ExprType::FuncCall(arg, var_obj).into();
         rule_func.resolve()?;
 
         /* Read variables */
@@ -233,7 +237,7 @@ impl ExprBuiltin<Value> for BuiltinPbRule {
             expr.resolve()?;
             let attrs = match &*expr.inner_ref() {
                 ExprType::List(exprs) => exprs.clone(),
-                ExprType::Value(value) => vec![value.clone().into()],
+                ExprType::Value(value) => vec![ExprType::from(value.clone()).reref(loc.clone())],
                 _ => panic!("pb.rule function needs to return an object"),
             };
             let ninja_attrs: Vec<NinjaArg> = attrs
@@ -251,23 +255,27 @@ impl ExprBuiltin<Value> for BuiltinPbRule {
         }
 
         /* Wrap into a node */
-        Ok(Value::BuildRule(PbBuildRule::new(rule_args, vars).into()).into())
+        Ok(ExprType::from(Value::BuildRule(PbBuildRule::new(rule_args, vars).into())).reref(loc))
     }
 }
 
 #[derive(Debug)]
 pub struct BuiltinPbBuild;
 
-impl ExprBuiltin<Value> for BuiltinPbBuild {
+impl<F> ExprBuiltin<Value, F> for BuiltinPbBuild
+where
+    F: Clone,
+{
     fn get_name(&self) -> String {
         "build".into()
     }
 
     fn call(
         &self,
-        arg: crate::lang::Expr<Value>,
-    ) -> crate::lang::ops::Result<crate::lang::Expr<Value>> {
+        arg: crate::lang::Expr<Value, F>,
+    ) -> crate::lang::ops::Result<crate::lang::Expr<Value, F>> {
         arg.resolve()?;
+        let loc = arg.get_loc();
 
         let opt_err =
             || crate::lang::ops::Error::Type(format!("unknown arg for pb.build, got {}", arg));
@@ -295,9 +303,11 @@ impl ExprBuiltin<Value> for BuiltinPbBuild {
 
             let mut value: Vec<NinjaArg> = vec![];
 
-            let elems: Vec<Expr<Value>> = match &*build_arg.inner_ref() {
+            let elems: Vec<Expr<Value, F>> = match &*build_arg.inner_ref() {
                 ExprType::List(exprs) => Ok(exprs.clone()),
-                ExprType::Value(value) => Ok(vec![value.clone().into()]),
+                ExprType::Value(value) => {
+                    Ok(vec![ExprType::from(value.clone()).reref(loc.clone())])
+                }
                 _ => Err(crate::lang::ops::Error::Type(format!(
                     "field {} is not a list or value",
                     arg_name
@@ -336,11 +346,14 @@ impl ExprBuiltin<Value> for BuiltinPbBuild {
             args,
             deps,
         })))
-        .into())
+        .reref(loc))
     }
 }
 
-pub fn get_pb_builtins() -> Result<Expr<Value>> {
+pub fn get_pb_builtins<F>() -> Result<Expr<Value, F>>
+where
+    F: Clone,
+{
     let pbset = ExprSet::from([
         ("rule".into(), Expr::new_builtin(Rc::new(BuiltinPbRule))),
         ("build".into(), Expr::new_builtin(Rc::new(BuiltinPbBuild))),

@@ -1,4 +1,4 @@
-use std::{fmt::Debug, fs, path::Path, rc::Rc};
+use std::{fmt::Debug, fs, rc::Rc};
 
 use crate::{
     lang::{Expr, ExprSet, ExprType, Result, ops::ExprBuiltin, parse_str},
@@ -14,12 +14,12 @@ use crate::{
 #[derive(Debug)]
 struct BuiltinInclude(LangContext);
 
-impl ExprBuiltin<Value> for BuiltinInclude {
+impl ExprBuiltin<Value, VirtPath> for BuiltinInclude {
     fn get_name(&self) -> String {
         "include".into()
     }
 
-    fn call(&self, arg: Expr<Value>) -> crate::lang::ops::Result<Expr<Value>> {
+    fn call(&self, arg: Expr<Value, VirtPath>) -> crate::lang::ops::Result<Expr<Value, VirtPath>> {
         let file_value = arg.value()?;
         let file_path = file_value
             .try_as_path()
@@ -34,15 +34,15 @@ impl ExprBuiltin<Value> for BuiltinInclude {
 #[derive(Debug)]
 pub struct BuiltinLock;
 
-impl ExprBuiltin<Value> for BuiltinLock {
+impl ExprBuiltin<Value, VirtPath> for BuiltinLock {
     fn get_name(&self) -> String {
         "lock".into()
     }
 
     fn call(
         &self,
-        arg: crate::lang::Expr<Value>,
-    ) -> crate::lang::ops::Result<crate::lang::Expr<Value>> {
+        arg: crate::lang::Expr<Value, VirtPath>,
+    ) -> crate::lang::ops::Result<crate::lang::Expr<Value, VirtPath>> {
         let val = arg.value()?;
         let path = val
             .try_as_path()
@@ -56,7 +56,7 @@ impl ExprBuiltin<Value> for BuiltinLock {
 
 #[derive(Debug)]
 struct LangContextStorage {
-    builtins: ExprSet<Value>,
+    builtins: ExprSet<Value, VirtPath>,
 }
 
 #[derive(Debug, Clone)]
@@ -76,20 +76,24 @@ impl LangContext {
         Self::default()
     }
 
-    pub fn add_builtin(&mut self, name: impl ToString, value: Expr<Value>) {
+    pub fn add_builtin(&mut self, name: impl ToString, value: Expr<Value, VirtPath>) {
         Rc::get_mut(&mut self.0)
             .unwrap()
             .builtins
             .insert(name.to_string(), value);
     }
 
-    fn setup_file_args(&self, file: VirtPath) -> Result<Expr<Value>> {
+    fn setup_file_args(&self, file: VirtPath) -> Result<Expr<Value, VirtPath>> {
         let cwd = file.parent().unwrap().lock();
 
-        Ok(ExprSet::from([("cwd".to_string(), Expr::from(Value::Path(cwd)))]).into())
+        Ok(ExprSet::from([(
+            "cwd".to_string(),
+            ExprType::from(Value::Path(cwd)).builtin(),
+        )])
+        .into())
     }
 
-    fn setup_file_builtins(&self) -> Result<ExprSet<Value>> {
+    fn setup_file_builtins(&self) -> Result<ExprSet<Value, VirtPath>> {
         let storage = self.0.as_ref();
         let mut builtins = storage.builtins.clone();
         builtins.insert(
@@ -99,18 +103,18 @@ impl LangContext {
         Ok(builtins)
     }
 
-    pub fn read_file(&self, filename: &Path) -> Result<Expr<Value>> {
-        let code = fs::read_to_string(filename).unwrap();
-        let expr: Expr<Value> = parse_str(&code)?;
+    pub fn read_file(&self, filename: &VirtPath) -> Result<Expr<Value, VirtPath>> {
+        let fs_path = filename.to_path_buf();
+        let code = fs::read_to_string(fs_path).unwrap();
+        let expr: Expr<Value, VirtPath> = parse_str(&code, filename)?;
         Ok(expr)
     }
 
-    pub fn include(&self, file: VirtPath) -> Result<Expr<Value>> {
-        let fs_path = file.to_path_buf();
-        let file_expr = self.read_file(&fs_path)?;
+    pub fn include(&self, file: VirtPath) -> Result<Expr<Value, VirtPath>> {
+        let file_expr = self.read_file(&file)?;
         let file_args = self.setup_file_args(file)?;
         let file_builtins = self.setup_file_builtins()?;
-        let called_expr: Expr<Value> =
+        let called_expr: Expr<Value, VirtPath> =
             ExprType::FuncCall(ExprType::Bind(file_builtins, file_expr).into(), file_args).into();
         Ok(called_expr)
     }

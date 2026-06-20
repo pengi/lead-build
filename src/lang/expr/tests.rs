@@ -1,8 +1,11 @@
 use super::*;
 use super::{super::parser::parse_str, super::testvalue::TestValue, ExprType::Bind};
 
-fn eval(code: &str) -> Expr<TestValue> {
-    let expr: Expr<TestValue> = ExprType::Bind(ExprSet::new(), parse_str(code).unwrap()).into();
+type FRef = i32;
+
+fn eval(code: &str) -> Expr<TestValue, FRef> {
+    let expr: Expr<TestValue, FRef> =
+        ExprType::Bind(ExprSet::new(), parse_str(code, &1).unwrap()).into();
     expr.eval().unwrap();
     expr
 }
@@ -16,10 +19,14 @@ fn test_resolve() -> Result<()> {
                     something = "hej";
                 }
             "#,
+        &1,
     )
     .unwrap();
     let value = expr.get_item("stuff")?;
-    assert_eq!(value, Expr::from(TestValue::String("hello".into())));
+    assert_eq!(
+        value,
+        ExprType::from(TestValue::String("hello".into())).builtin()
+    );
     Ok(())
 }
 
@@ -50,10 +57,11 @@ fn test_resolve_deep() -> Result<()> {
                     };
                 }
             "#,
+        &1,
     )
     .unwrap();
     let value = expr.get_item("something")?.get_item("inner")?;
-    assert_eq!(value, Expr::from(TestValue::Int(55)));
+    assert_eq!(value, ExprType::from(TestValue::Int(55)).builtin());
     Ok(())
 }
 
@@ -81,8 +89,8 @@ fn test_bind_error() {
 
 #[test]
 fn test_invalid_var() -> Result<()> {
-    let expr: Expr<TestValue> =
-        ExprType::Bind(ExprSet::new(), parse_str("invalid_var").unwrap()).into();
+    let expr: Expr<TestValue, FRef> =
+        ExprType::Bind(ExprSet::new(), parse_str("invalid_var", &1).unwrap()).into();
     if let Err(Error::Scope(message)) = expr.resolve() {
         assert_eq!(message.as_str(), "Unknown variable invalid_var");
     } else {
@@ -124,24 +132,24 @@ fn test_let_set_var_seq() {
 
 #[test]
 fn test_func_call() {
-    let func_a = parse_str("var: 13").unwrap();
-    let func_b = parse_str("var: 42").unwrap();
-    let call = parse_str("func_b 32").unwrap();
+    let func_a = parse_str("var: 13", &1).unwrap();
+    let func_b = parse_str("var: 42", &1).unwrap();
+    let call = parse_str("func_b 32", &1).unwrap();
     let varscope = ExprSet::from([("func_a".into(), func_a), ("func_b".into(), func_b)]);
-    let value: Expr<TestValue> = ExprType::Bind(varscope, call).into();
+    let value: Expr<TestValue, FRef> = ExprType::Bind(varscope, call).into();
     value.resolve().unwrap();
-    assert_eq!(value, Expr::from(TestValue::Int(42)));
+    assert_eq!(value, ExprType::from(TestValue::Int(42)).builtin());
 }
 
 #[test]
 fn test_func_call_var_arg() {
-    let func_var = parse_str("var: var").unwrap();
-    let arg_var = parse_str("32").unwrap();
-    let call = parse_str("func arg").unwrap();
+    let func_var = parse_str("var: var", &1).unwrap();
+    let arg_var = parse_str("32", &1).unwrap();
+    let call = parse_str("func arg", &1).unwrap();
     let varscope = ExprSet::from([("func".into(), func_var), ("arg".into(), arg_var)]);
-    let value: Expr<TestValue> = ExprType::Bind(varscope, call).into();
+    let value: Expr<TestValue, FRef> = ExprType::Bind(varscope, call).into();
     value.resolve().unwrap();
-    assert_eq!(value, Expr::from(TestValue::Int(32)));
+    assert_eq!(value, ExprType::from(TestValue::Int(32)).builtin());
 }
 
 #[test]
@@ -348,12 +356,12 @@ impl CountingBuiltin {
     }
 }
 
-impl ExprBuiltin<TestValue> for CountingBuiltin {
+impl ExprBuiltin<TestValue, FRef> for CountingBuiltin {
     fn get_name(&self) -> String {
         "mybuiltin".into()
     }
 
-    fn call(&self, arg: Expr<TestValue>) -> ops::Result<Expr<TestValue>> {
+    fn call(&self, arg: Expr<TestValue, FRef>) -> ops::Result<Expr<TestValue, FRef>> {
         let mut counter = self.0.borrow_mut();
         *counter += 1;
         Ok(arg)
@@ -409,7 +417,7 @@ fn test_builtin_func() {
         "mybuiltin".into(),
         Expr::new_builtin(Rc::new(CountingBuiltin::new())),
     )]);
-    let expr: Expr<TestValue> = Bind(builtins, parse_str(code).unwrap()).into();
+    let expr: Expr<TestValue, FRef> = Bind(builtins, parse_str(code, &1).unwrap()).into();
     expr.eval().unwrap();
     assert_eq!(expr, eval("10"));
 }
@@ -431,7 +439,7 @@ fn test_builtin_func_laziness_multiple_calls() {
         "mybuiltin".into(),
         Expr::new_builtin(Rc::new(counter.clone())),
     )]);
-    let expr: Expr<TestValue> = Bind(builtins, parse_str(code).unwrap()).into();
+    let expr: Expr<TestValue, FRef> = Bind(builtins, parse_str(code, &1).unwrap()).into();
     expr.eval().unwrap();
     assert_eq!(expr, eval("{ a = 10; b = 10; }"));
     assert_eq!(counter.get(), 1);
@@ -451,7 +459,7 @@ fn test_builtin_func_laziness_no_calls() {
         "mybuiltin".into(),
         Expr::new_builtin(Rc::new(counter.clone())),
     )]);
-    let expr: Expr<TestValue> = Bind(builtins, parse_str(code).unwrap()).into();
+    let expr: Expr<TestValue, FRef> = Bind(builtins, parse_str(code, &1).unwrap()).into();
     expr.eval().unwrap();
     assert_eq!(expr, eval("{}"));
     assert_eq!(counter.get(), 0);

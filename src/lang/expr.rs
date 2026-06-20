@@ -32,12 +32,13 @@ pub mod ops {
         fn new_from_bool(&self, value: bool) -> Self;
     }
 
-    pub trait ExprBuiltin<T>: Debug
+    pub trait ExprBuiltin<T, F>: Debug
     where
         T: Clone + PartialEq + Display + ExprOps,
+        F: Clone,
     {
         fn get_name(&self) -> String;
-        fn call(&self, arg: Expr<T>) -> Result<Expr<T>>;
+        fn call(&self, arg: Expr<T, F>) -> Result<Expr<T, F>>;
     }
 
     pub enum Error {
@@ -114,12 +115,13 @@ type Result<RT> = std::result::Result<RT, Error>;
  */
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct Expr<T>(Rc<ExprStorage<T>>)
+pub struct Expr<T, F>(Rc<ExprStorage<T, F>>)
 where
-    T: Clone + PartialEq + Display + ExprOps;
+    T: Clone + PartialEq + Display + ExprOps,
+    F: Clone;
 
 // TODO: Better implementation of ExprSet... This probably takes time to clone.
-pub type ExprSet<T> = BTreeMap<String, Expr<T>>;
+pub type ExprSet<T, F> = BTreeMap<String, Expr<T, F>>;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum ExprBinOp {
@@ -148,49 +150,114 @@ pub enum ExprUnOp {
 }
 
 #[derive(Clone)]
-pub struct ExprBuiltinWrapper<T>(String, Rc<dyn ExprBuiltin<T>>)
-where
-    T: Clone + PartialEq + Display + ExprOps;
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct ExprStorage<T>
+pub struct ExprBuiltinWrapper<T, F>(String, Rc<dyn ExprBuiltin<T, F>>)
 where
     T: Clone + PartialEq + Display + ExprOps,
+    F: Clone;
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct ExprSourceRef<F> {
+    file: F,
+    left: usize,
+    right: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExprStorage<T, F>
+where
+    T: Clone + PartialEq + Display + ExprOps,
+    F: Clone,
 {
-    tok: RefCell<ExprType<T>>,
+    tok: RefCell<ExprType<T, F>>,
+    loc: Option<ExprSourceRef<F>>,
 }
 
 // Clone is needed since ExprType::Var is implemented via cloning of ExprType
 #[derive(Debug, PartialEq, Clone, Default, EnumTryAs)]
-pub enum ExprType<T>
+pub enum ExprType<T, F>
 where
     T: Clone + PartialEq + Display + ExprOps,
+    F: Clone,
 {
-    Object(ExprSet<T>),
-    List(Vec<Expr<T>>),
-    AttrSel(Expr<T>, String),
+    Object(ExprSet<T, F>),
+    List(Vec<Expr<T, F>>),
+    AttrSel(Expr<T, F>, String),
     Value(T),
     Var(String),
-    UnOp(ExprUnOp, Expr<T>),
-    BinOp(ExprBinOp, Expr<T>, Expr<T>),
-    FuncDefIdent(String, Expr<T>),
-    FuncDefPattern(Vec<String>, Expr<T>),
-    FuncDefBuiltin(ExprBuiltinWrapper<T>),
-    Let(Vec<(String, Expr<T>)>, Expr<T>),
-    MapList(Expr<T>, Expr<T>),
-    FuncCall(Expr<T>, Expr<T>),
-    Bind(ExprSet<T>, Expr<T>),
+    UnOp(ExprUnOp, Expr<T, F>),
+    BinOp(ExprBinOp, Expr<T, F>, Expr<T, F>),
+    FuncDefIdent(String, Expr<T, F>),
+    FuncDefPattern(Vec<String>, Expr<T, F>),
+    FuncDefBuiltin(ExprBuiltinWrapper<T, F>),
+    Let(Vec<(String, Expr<T, F>)>, Expr<T, F>),
+    MapList(Expr<T, F>, Expr<T, F>),
+    FuncCall(Expr<T, F>, Expr<T, F>),
+    Bind(ExprSet<T, F>, Expr<T, F>),
     #[default]
     Null,
+}
+
+/* *****************************************************************************
+ * PartialEq
+ */
+
+impl<T, F> PartialEq for ExprStorage<T, F>
+where
+    T: Clone + PartialEq + Display + ExprOps,
+    F: Clone + PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.tok == other.tok
+    }
+}
+
+/* *****************************************************************************
+ * Location handling
+ */
+
+impl<T, F> Expr<T, F>
+where
+    T: Clone + PartialEq + Display + ExprOps,
+    F: Clone,
+{
+    pub fn get_loc(&self) -> Option<ExprSourceRef<F>> {
+        self.0.as_ref().loc.clone()
+    }
+}
+
+impl<T, F> ExprType<T, F>
+where
+    T: Clone + PartialEq + Display + ExprOps,
+    F: Clone,
+{
+    pub fn reref(self: ExprType<T, F>, loc: Option<ExprSourceRef<F>>) -> Expr<T, F> {
+        Expr(Rc::new(ExprStorage {
+            tok: RefCell::new(self),
+            loc,
+        }))
+    }
+
+    pub fn loc(self: ExprType<T, F>, left: usize, right: usize, f: &F) -> Expr<T, F> {
+        self.reref(Some(ExprSourceRef {
+            file: f.clone(),
+            left,
+            right,
+        }))
+    }
+
+    pub fn builtin(self: ExprType<T, F>) -> Expr<T, F> {
+        self.reref(None)
+    }
 }
 
 /* *****************************************************************************
  * Display
  */
 
-impl<T> Debug for ExprBuiltinWrapper<T>
+impl<T, F> Debug for ExprBuiltinWrapper<T, F>
 where
     T: Clone + PartialEq + Display + ExprOps,
+    F: Clone,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("ExprBuiltinWrapper").field(&self.0).finish()
@@ -229,18 +296,20 @@ impl Display for ExprUnOp {
     }
 }
 
-impl<T> Display for Expr<T>
+impl<T, F> Display for Expr<T, F>
 where
     T: Clone + PartialEq + Display + ExprOps + Debug + Exportable,
+    F: Clone,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.export(0, f)
     }
 }
 
-impl<T> Display for ExprType<T>
+impl<T, F> Display for ExprType<T, F>
 where
     T: Clone + PartialEq + Display + ExprOps + Debug + Exportable,
+    F: Clone,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.export(0, f)
@@ -251,59 +320,56 @@ where
  * Transform / From
  */
 
-impl<T> From<T> for ExprType<T>
+impl<T, F> From<ExprType<T, F>> for ExprStorage<T, F>
 where
     T: Clone + PartialEq + Display + ExprOps,
+    F: Clone,
 {
-    fn from(value: T) -> Self {
-        ExprType::Value(value)
-    }
-}
-
-impl<T> From<ExprType<T>> for ExprStorage<T>
-where
-    T: Clone + PartialEq + Display + ExprOps,
-{
-    fn from(value: ExprType<T>) -> Self {
+    fn from(value: ExprType<T, F>) -> Self {
         ExprStorage {
             tok: RefCell::new(value),
+            loc: None, // TODO
         }
     }
 }
 
-impl<T> From<ExprStorage<T>> for Expr<T>
+impl<T, F> From<ExprStorage<T, F>> for Expr<T, F>
 where
     T: Clone + PartialEq + Display + ExprOps,
+    F: Clone,
 {
-    fn from(value: ExprStorage<T>) -> Self {
+    fn from(value: ExprStorage<T, F>) -> Self {
         Expr(Rc::new(value))
     }
 }
 
-impl<T> From<ExprType<T>> for Expr<T>
+impl<T, F> From<ExprType<T, F>> for Expr<T, F>
 where
     T: Clone + PartialEq + Display + ExprOps,
+    F: Clone,
 {
-    fn from(value: ExprType<T>) -> Self {
+    fn from(value: ExprType<T, F>) -> Self {
         Expr::from(ExprStorage::from(value))
     }
 }
 
-impl<T> From<T> for Expr<T>
+impl<T, F> From<ExprSet<T, F>> for Expr<T, F>
 where
     T: Clone + PartialEq + Display + ExprOps,
+    F: Clone,
 {
-    fn from(value: T) -> Self {
-        Expr::from(ExprType::from(value))
+    fn from(value: ExprSet<T, F>) -> Self {
+        Expr::from(ExprType::Object(value))
     }
 }
 
-impl<T> From<ExprSet<T>> for Expr<T>
+impl<T, F> From<T> for ExprType<T, F>
 where
     T: Clone + PartialEq + Display + ExprOps,
+    F: Clone,
 {
-    fn from(value: ExprSet<T>) -> Self {
-        Expr::from(ExprType::Object(value))
+    fn from(value: T) -> Self {
+        ExprType::Value(value)
     }
 }
 
@@ -311,9 +377,10 @@ where
  * Implementations
  */
 
-impl<T> PartialEq for ExprBuiltinWrapper<T>
+impl<T, F> PartialEq for ExprBuiltinWrapper<T, F>
 where
     T: Clone + PartialEq + Display + ExprOps,
+    F: Clone,
 {
     fn eq(&self, other: &Self) -> bool {
         #[cfg(test)]
@@ -328,11 +395,12 @@ where
     }
 }
 
-impl<T> Expr<T>
+impl<T, F> Expr<T, F>
 where
     T: Clone + PartialEq + Display + ExprOps + Debug + Exportable,
+    F: Clone,
 {
-    pub fn inner_ref(&self) -> Ref<'_, ExprType<T>> {
+    pub fn inner_ref(&self) -> Ref<'_, ExprType<T, F>> {
         self.0.as_ref().tok.borrow()
     }
 
@@ -380,7 +448,7 @@ where
                         attr.clone(),
                     )),
                     ExprType::Let(fields, target_expr) => {
-                        let mut vars: ExprSet<T> = varspace;
+                        let mut vars: ExprSet<T, F> = varspace;
                         for (field_name, field_expr) in fields {
                             let field_vars = vars.clone();
                             vars.insert(
@@ -442,29 +510,30 @@ where
                     Ok(attr_expr.inner_ref().clone())
                 }
                 ExprType::FuncCall(fexpr, fargs) => {
-                    let (mut args, func_expr): (ExprSet<T>, Expr<T>) = match &*fexpr.res_type()? {
-                        ExprType::FuncDefIdent(arg_name, fimpl) => Ok((
-                            ExprSet::from([(arg_name.clone(), fargs.clone())]),
-                            fimpl.clone(),
-                        )),
-                        ExprType::FuncDefPattern(arg_names, fimpl) => {
-                            fargs.resolve()?;
-                            let mut new_vars = ExprSet::new();
-                            for arg_name in arg_names {
-                                let arg_value = fargs.get_item(arg_name)?;
-                                new_vars.insert(arg_name.clone(), arg_value).map_or_else(
-                                    || Ok(()),
-                                    |_| Err(Error::DupKey(arg_name.clone())),
-                                )?;
+                    let (mut args, func_expr): (ExprSet<T, F>, Expr<T, F>) =
+                        match &*fexpr.res_type()? {
+                            ExprType::FuncDefIdent(arg_name, fimpl) => Ok((
+                                ExprSet::from([(arg_name.clone(), fargs.clone())]),
+                                fimpl.clone(),
+                            )),
+                            ExprType::FuncDefPattern(arg_names, fimpl) => {
+                                fargs.resolve()?;
+                                let mut new_vars = ExprSet::new();
+                                for arg_name in arg_names {
+                                    let arg_value = fargs.get_item(arg_name)?;
+                                    new_vars.insert(arg_name.clone(), arg_value).map_or_else(
+                                        || Ok(()),
+                                        |_| Err(Error::DupKey(arg_name.clone())),
+                                    )?;
+                                }
+                                Ok((new_vars, fimpl.clone()))
                             }
-                            Ok((new_vars, fimpl.clone()))
-                        }
-                        ExprType::FuncDefBuiltin(ExprBuiltinWrapper(_, funcrc)) => {
-                            let res = funcrc.as_ref().call(fargs)?;
-                            Ok((ExprSet::new(), res))
-                        }
-                        _ => Err(Error::Scope(format!("called func, but it's a {}", fexpr))),
-                    }?;
+                            ExprType::FuncDefBuiltin(ExprBuiltinWrapper(_, funcrc)) => {
+                                let res = funcrc.as_ref().call(fargs)?;
+                                Ok((ExprSet::new(), res))
+                            }
+                            _ => Err(Error::Scope(format!("called func, but it's a {}", fexpr))),
+                        }?;
 
                     // If function contains a bound scope, it should still apply,
                     // and not overwrite input arguments.
@@ -559,7 +628,7 @@ where
         Ok(())
     }
 
-    fn res_type(&self) -> Result<Ref<'_, ExprType<T>>> {
+    fn res_type(&self) -> Result<Ref<'_, ExprType<T, F>>> {
         self.resolve()?;
         Ok(self.inner_ref())
     }
@@ -600,7 +669,7 @@ where
         }
     }
 
-    pub fn get_item(&self, name: &str) -> Result<Expr<T>> {
+    pub fn get_item(&self, name: &str) -> Result<Expr<T, F>> {
         self.resolve()?;
         let node = self.inner_ref();
         match &*node {
@@ -612,11 +681,11 @@ where
         }
     }
 
-    pub fn new_builtin(func: Rc<dyn ExprBuiltin<T>>) -> Expr<T> {
+    pub fn new_builtin(func: Rc<dyn ExprBuiltin<T, F>>) -> Expr<T, F> {
         ExprType::FuncDefBuiltin(ExprBuiltinWrapper(func.as_ref().get_name(), func)).into()
     }
 
-    pub fn from_builtins(value: Vec<Rc<dyn ExprBuiltin<T>>>) -> Expr<T> {
+    pub fn from_builtins(value: Vec<Rc<dyn ExprBuiltin<T, F>>>) -> Expr<T, F> {
         let mut exprset = ExprSet::new();
 
         for bi in value.into_iter() {

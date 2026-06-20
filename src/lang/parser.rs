@@ -47,18 +47,20 @@ where
     fn from_bool(value: bool) -> Self;
 }
 
-pub fn parse_str<T>(code: &str) -> Result<Expr<T>>
+pub fn parse_str<T, F>(code: &str, file: &F) -> Result<Expr<T, F>>
 where
     T: ParsableValue + Clone + PartialEq + Display + ExprOps,
+    F: Clone,
 {
     let parser = grammar::ExprParser::new();
-    let result = parser.parse::<T>(code)?;
+    let result = parser.parse::<T, F>(file, code)?;
     Ok(result)
 }
 
-fn unpack_str<T>(input: &str) -> Expr<T>
+fn unpack_str<T, F>(input: &str, left: usize, right: usize, file: &F) -> Result<Expr<T, F>>
 where
     T: ParsableValue + Clone + PartialEq + Display + ExprOps,
+    F: Clone,
 {
     let mut out = String::new();
     let mut chars = input.chars();
@@ -94,11 +96,13 @@ where
     }
 
     let parts = string_decode(out.as_str()).unwrap();
-    let mut out_expr: Option<Expr<T>> = None;
+    let mut out_expr: Option<Expr<T, F>> = None;
     for part in parts {
-        let part_expr: Expr<T> = match part {
-            StringType::Str(s) => T::parse_string(s).unwrap().into(),
-            StringType::Expr(code) => parse_str(&code).unwrap(),
+        let part_expr: Expr<T, F> = match part {
+            StringType::Str(s) => {
+                ExprType::Value(T::parse_string(s).unwrap()).loc(left, right, file)
+            }
+            StringType::Expr(code) => parse_str(&code, file)?,
         };
         out_expr = match out_expr {
             Some(prev) => Some(ExprType::BinOp(ExprBinOp::Add, prev, part_expr).into()),
@@ -106,12 +110,13 @@ where
         }
     }
 
-    out_expr.unwrap()
+    Ok(out_expr.unwrap())
 }
 
-fn unpack_int<T>(input: &str) -> Expr<T>
+fn unpack_int<T, F>(input: &str) -> ExprType<T, F>
 where
     T: ParsableValue + Clone + PartialEq + Display + ExprOps,
+    F: Clone,
 {
     match T::parse_int(input) {
         Some(value) => value.into(),
@@ -119,9 +124,10 @@ where
     }
 }
 
-fn unpack_bool<T>(input: bool) -> Expr<T>
+fn unpack_bool<T, F>(input: bool) -> ExprType<T, F>
 where
     T: ParsableValue + Clone + PartialEq + Display + ExprOps,
+    F: Clone,
 {
     T::from_bool(input).into()
 }
@@ -131,8 +137,10 @@ mod tests {
     use super::super::testvalue::TestValue;
     use super::*;
 
-    fn eval<'a>(code: &str) -> Expr<TestValue> {
-        parse_str(code).unwrap()
+    type FRef = i32;
+
+    fn eval<'a>(code: &str) -> Expr<TestValue, FRef> {
+        parse_str(code, &1).unwrap()
     }
 
     #[test]
@@ -223,7 +231,7 @@ mod tests {
                     Expr::from(ExprType::Value(TestValue::String("prefix".into()))),
                     Expr::from(ExprSet::from([(
                         "a".into(),
-                        Expr::from(TestValue::Int(12))
+                        ExprType::from(TestValue::Int(12)).builtin()
                     )]))
                 )),
                 Expr::from(ExprType::Value(TestValue::String("suffix".into())))
@@ -295,7 +303,7 @@ mod tests {
     fn test_parse_func_def_pattern_non_var_1() {
         let code = "{ hej, hopp, svej }: 12";
 
-        let res: Result<Expr<TestValue>> = parse_str(code);
+        let res: Result<Expr<TestValue, FRef>> = parse_str(code, &1);
         // Should be an error, try to unwrap it. Panic otherwise
         let _ = res.unwrap_err();
     }
@@ -304,7 +312,7 @@ mod tests {
     fn test_parse_func_def_pattern_non_var_2() {
         let code = "{ hej, hopp, svej, }: 12";
 
-        let res: Result<Expr<TestValue>> = parse_str(code);
+        let res: Result<Expr<TestValue, FRef>> = parse_str(code, &1);
         // Should be an error, try to unwrap it. Panic otherwise
         let _ = res.unwrap_err();
     }
@@ -362,19 +370,19 @@ mod tests {
 
     #[test]
     fn test_parse_list() {
-        let res: Result<Expr<TestValue>> = parse_str("[]");
+        let res: Result<Expr<TestValue, FRef>> = parse_str("[]", &1);
         res.unwrap();
-        let res: Result<Expr<TestValue>> = parse_str("[1]");
+        let res: Result<Expr<TestValue, FRef>> = parse_str("[1]", &1);
         res.unwrap();
-        let res: Result<Expr<TestValue>> = parse_str("[1,2]");
+        let res: Result<Expr<TestValue, FRef>> = parse_str("[1,2]", &1);
         res.unwrap();
-        let res: Result<Expr<TestValue>> = parse_str("[1,2,]");
+        let res: Result<Expr<TestValue, FRef>> = parse_str("[1,2,]", &1);
         res.unwrap();
-        let res: Result<Expr<TestValue>> = parse_str("[,1,2]");
+        let res: Result<Expr<TestValue, FRef>> = parse_str("[,1,2]", &1);
         res.unwrap_err();
-        let res: Result<Expr<TestValue>> = parse_str("[1,,2]");
+        let res: Result<Expr<TestValue, FRef>> = parse_str("[1,,2]", &1);
         res.unwrap_err();
-        let res: Result<Expr<TestValue>> = parse_str("[1,2,,]");
+        let res: Result<Expr<TestValue, FRef>> = parse_str("[1,2,,]", &1);
         res.unwrap_err();
     }
 }
