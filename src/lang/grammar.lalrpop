@@ -11,11 +11,12 @@ use super::{
     unpack_int,
     unpack_bool
 };
+use std::fmt::Debug;
 
 grammar<T, F>(f: &F)
 where
-    T: ParsableValue + Clone + PartialEq + Display + ExprOps,
-    F: Clone;
+    T: ParsableValue + Clone + PartialEq + Display + ExprOps<F>,
+    F: Clone + Debug;
 
 pub Expr: Expr<T, F> = {
     <ExprFuncDef>,

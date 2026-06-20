@@ -1,12 +1,15 @@
 use std::fmt::Display;
 
-use super::Exportable;
 use strum::EnumTryAs;
 
 use super::{
-    expr::ops::{Error, ExprOps, Result},
+    Exportable,
+    error::{Error, ErrorType, Result},
+    expr::ExprOps,
     parser::ParsableValue,
 };
+
+pub type FRef = i32;
 
 #[derive(Clone, PartialEq, Debug, EnumTryAs)]
 pub enum TestValue {
@@ -15,7 +18,7 @@ pub enum TestValue {
     Bool(bool),
 }
 
-impl super::Exportable for TestValue {
+impl Exportable for TestValue {
     fn export(&self, _indent: i32, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TestValue::Int(v) => v.fmt(f),
@@ -45,68 +48,92 @@ impl ParsableValue for TestValue {
     }
 }
 
-impl ExprOps for TestValue {
-    fn op_add(lhs: &Self, rhs: &Self) -> Result<Self> {
+impl ExprOps<FRef> for TestValue {
+    fn op_add(lhs: &Self, rhs: &Self) -> Result<Self, FRef> {
         match (lhs, rhs) {
             (TestValue::Int(lhs), TestValue::Int(rhs)) => Ok(TestValue::Int(lhs + rhs)),
-            _ => Err(Error::Type(format!("can't add {} and {}", lhs, rhs))),
+            _ => Err(Error::new(
+                ErrorType::Type,
+                format!("can't add {} and {}", lhs, rhs),
+            )),
         }
     }
 
-    fn op_sub(lhs: &Self, rhs: &Self) -> Result<Self> {
+    fn op_sub(lhs: &Self, rhs: &Self) -> Result<Self, FRef> {
         match (lhs, rhs) {
             (TestValue::Int(lhs), TestValue::Int(rhs)) => Ok(TestValue::Int(lhs - rhs)),
-            _ => Err(Error::Type(format!("can't subtract {} and {}", lhs, rhs))),
+            _ => Err(Error::new(
+                ErrorType::Type,
+                format!("can't subtract {} and {}", lhs, rhs),
+            )),
         }
     }
 
-    fn op_mult(lhs: &Self, rhs: &Self) -> Result<Self> {
+    fn op_mult(lhs: &Self, rhs: &Self) -> Result<Self, FRef> {
         match (lhs, rhs) {
             (TestValue::Int(lhs), TestValue::Int(rhs)) => Ok(TestValue::Int(lhs * rhs)),
-            _ => Err(Error::Type(format!("can't multiply {} and {}", lhs, rhs))),
+            _ => Err(Error::new(
+                ErrorType::Type,
+                format!("can't multiply {} and {}", lhs, rhs),
+            )),
         }
     }
 
-    fn op_div(lhs: &Self, rhs: &Self) -> Result<Self> {
+    fn op_div(lhs: &Self, rhs: &Self) -> Result<Self, FRef> {
         match (lhs, rhs) {
             (TestValue::Int(lhs), TestValue::Int(rhs)) => Ok(TestValue::Int(lhs / rhs)),
-            _ => Err(Error::Type(format!("can't divide {} and {}", lhs, rhs))),
+            _ => Err(Error::new(
+                ErrorType::Type,
+                format!("can't divide {} and {}", lhs, rhs),
+            )),
         }
     }
 
-    fn op_lt(lhs: &Self, rhs: &Self) -> Result<Self> {
+    fn op_lt(lhs: &Self, rhs: &Self) -> Result<Self, FRef> {
         match (lhs, rhs) {
             (TestValue::Int(lhs), TestValue::Int(rhs)) => Ok(TestValue::Bool(lhs < rhs)),
             (TestValue::String(lhs), TestValue::String(rhs)) => Ok(TestValue::Bool(lhs < rhs)),
-            _ => Err(Error::Type(format!("can't compare {} and {}", lhs, rhs))),
+            _ => Err(Error::new(
+                ErrorType::Type,
+                format!("can't compare {} and {}", lhs, rhs),
+            )),
         }
     }
 
-    fn op_le(lhs: &Self, rhs: &Self) -> Result<Self> {
+    fn op_le(lhs: &Self, rhs: &Self) -> Result<Self, FRef> {
         match (lhs, rhs) {
             (TestValue::Int(lhs), TestValue::Int(rhs)) => Ok(TestValue::Bool(lhs <= rhs)),
             (TestValue::String(lhs), TestValue::String(rhs)) => Ok(TestValue::Bool(lhs <= rhs)),
-            _ => Err(Error::Type(format!("can't compare {} and {}", lhs, rhs))),
+            _ => Err(Error::new(
+                ErrorType::Type,
+                format!("can't compare {} and {}", lhs, rhs),
+            )),
         }
     }
 
-    fn op_gt(lhs: &Self, rhs: &Self) -> Result<Self> {
+    fn op_gt(lhs: &Self, rhs: &Self) -> Result<Self, FRef> {
         match (lhs, rhs) {
             (TestValue::Int(lhs), TestValue::Int(rhs)) => Ok(TestValue::Bool(lhs > rhs)),
             (TestValue::String(lhs), TestValue::String(rhs)) => Ok(TestValue::Bool(lhs > rhs)),
-            _ => Err(Error::Type(format!("can't compare {} and {}", lhs, rhs))),
+            _ => Err(Error::new(
+                ErrorType::Type,
+                format!("can't compare {} and {}", lhs, rhs),
+            )),
         }
     }
 
-    fn op_ge(lhs: &Self, rhs: &Self) -> Result<Self> {
+    fn op_ge(lhs: &Self, rhs: &Self) -> Result<Self, FRef> {
         match (lhs, rhs) {
             (TestValue::Int(lhs), TestValue::Int(rhs)) => Ok(TestValue::Bool(lhs >= rhs)),
             (TestValue::String(lhs), TestValue::String(rhs)) => Ok(TestValue::Bool(lhs >= rhs)),
-            _ => Err(Error::Type(format!("can't compare {} and {}", lhs, rhs))),
+            _ => Err(Error::new(
+                ErrorType::Type,
+                format!("can't compare {} and {}", lhs, rhs),
+            )),
         }
     }
 
-    fn op_eq(lhs: &Self, rhs: &Self) -> Result<Self> {
+    fn op_eq(lhs: &Self, rhs: &Self) -> Result<Self, FRef> {
         match (lhs, rhs) {
             (TestValue::Int(lhs), TestValue::Int(rhs)) => Ok(TestValue::Bool(lhs == rhs)),
             (TestValue::String(lhs), TestValue::String(rhs)) => Ok(TestValue::Bool(lhs == rhs)),
@@ -115,7 +142,7 @@ impl ExprOps for TestValue {
         }
     }
 
-    fn op_neq(lhs: &Self, rhs: &Self) -> Result<Self> {
+    fn op_neq(lhs: &Self, rhs: &Self) -> Result<Self, FRef> {
         match (lhs, rhs) {
             (TestValue::Int(lhs), TestValue::Int(rhs)) => Ok(TestValue::Bool(lhs != rhs)),
             (TestValue::String(lhs), TestValue::String(rhs)) => Ok(TestValue::Bool(lhs != rhs)),
@@ -124,31 +151,43 @@ impl ExprOps for TestValue {
         }
     }
 
-    fn op_neg(&self) -> Result<Self> {
+    fn op_neg(&self) -> Result<Self, FRef> {
         match self {
             TestValue::Int(val) => Ok(TestValue::Int(-val)),
-            _ => Err(Error::Type(format!("not an integer: {}", self))),
+            _ => Err(Error::new(
+                ErrorType::Type,
+                format!("not an integer: {}", self),
+            )),
         }
     }
 
-    fn op_not(&self) -> Result<Self> {
+    fn op_not(&self) -> Result<Self, FRef> {
         match self {
             TestValue::Bool(val) => Ok(TestValue::Bool(!val)),
-            _ => Err(Error::Type(format!("not a boolean: {}", self))),
+            _ => Err(Error::new(
+                ErrorType::Type,
+                format!("not a boolean: {}", self),
+            )),
         }
     }
 
-    fn as_bool(&self) -> Result<bool> {
+    fn as_bool(&self) -> Result<bool, FRef> {
         match self {
             TestValue::Bool(val) => Ok(*val),
-            _ => Err(Error::Type(format!("not a boolean: {}", self))),
+            _ => Err(Error::new(
+                ErrorType::Type,
+                format!("not a boolean: {}", self),
+            )),
         }
     }
 
-    fn as_string(&self) -> Result<String> {
+    fn as_string(&self) -> Result<String, FRef> {
         match self {
             TestValue::String(val) => Ok(val.clone()),
-            _ => Err(Error::Type(format!("not a string: {}", self))),
+            _ => Err(Error::new(
+                ErrorType::Type,
+                format!("not a string: {}", self),
+            )),
         }
     }
 

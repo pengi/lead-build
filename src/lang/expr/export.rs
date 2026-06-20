@@ -21,7 +21,7 @@ pub trait Exportable {
 
 impl<T, F> Exportable for super::Expr<T, F>
 where
-    T: Clone + PartialEq + Display + ExprOps + Debug + Exportable,
+    T: Clone + PartialEq + Display + ExprOps<F> + Debug + Exportable,
     F: Clone,
 {
     fn export(&self, indent: i32, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -31,7 +31,7 @@ where
 
 impl<T, F> Exportable for super::ExprType<T, F>
 where
-    T: Clone + PartialEq + Display + ExprOps + Debug + Exportable,
+    T: Clone + PartialEq + Display + ExprOps<F> + Debug + Exportable,
     F: Clone,
 {
     fn export(&self, indent: i32, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

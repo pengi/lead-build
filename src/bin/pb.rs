@@ -10,7 +10,7 @@ struct Args {
     input: PathBuf,
 }
 
-fn run(args: Args) -> Result<()> {
+fn run(args: Args) -> Result<(), VirtPath> {
     let ctx: LangContext = LangContext::new();
     let main_file = VirtPath::virtualize(&args.input, "root");
     let expr: Expr<Value, VirtPath> = ctx.include(main_file)?;

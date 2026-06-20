@@ -1,7 +1,10 @@
 use std::{
     fmt::Display,
+    fs,
     path::{Path, PathBuf},
 };
+
+use crate::lang::Referrable;
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct VirtPath {
@@ -22,6 +25,22 @@ impl Display for VirtPath {
             write!(f, "/{}", part)?;
         }
         Ok(())
+    }
+}
+
+impl Referrable for VirtPath {
+    fn format_ref(
+        &self,
+        left: usize,
+        _right: usize,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        let fs_path = self.to_path_buf();
+        let code = fs::read_to_string(fs_path.clone()).unwrap();
+        let before = code[..left].to_string();
+        let lines = before.lines().into_iter().count();
+        let column = before.lines().last().unwrap().len() + 1;
+        write!(f, "{}:{}:{}", fs_path.display(), lines, column)
     }
 }
 

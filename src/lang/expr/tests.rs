@@ -1,17 +1,19 @@
 use super::*;
-use super::{super::parser::parse_str, super::testvalue::TestValue, ExprType::Bind};
-
-type FRef = i32;
+use super::{
+    super::parser::parse_str,
+    super::testvalue::{FRef, TestValue},
+    ExprType,
+};
 
 fn eval(code: &str) -> Expr<TestValue, FRef> {
     let expr: Expr<TestValue, FRef> =
-        ExprType::Bind(ExprSet::new(), parse_str(code, &1).unwrap()).into();
+        ExprType::Bind(ExprSet::new(), parse_str(code, &1).unwrap()).builtin();
     expr.eval().unwrap();
     expr
 }
 
 #[test]
-fn test_resolve() -> Result<()> {
+fn test_resolve() -> Result<(), FRef> {
     let expr = parse_str(
         r#"
                 {
@@ -46,7 +48,7 @@ fn test_func_in_let_res() {
 }
 
 #[test]
-fn test_resolve_deep() -> Result<()> {
+fn test_resolve_deep() -> Result<(), FRef> {
     // This also tests "inner" as prefixed for reserved keyword "in" is ok
     let expr = parse_str(
         r#"
@@ -88,11 +90,11 @@ fn test_bind_error() {
 }
 
 #[test]
-fn test_invalid_var() -> Result<()> {
+fn test_invalid_var() -> Result<(), FRef> {
     let expr: Expr<TestValue, FRef> =
-        ExprType::Bind(ExprSet::new(), parse_str("invalid_var", &1).unwrap()).into();
-    if let Err(Error::Scope(message)) = expr.resolve() {
-        assert_eq!(message.as_str(), "Unknown variable invalid_var");
+        ExprType::Bind(ExprSet::new(), parse_str("invalid_var", &1).unwrap()).builtin();
+    if let Err(Error { msg, .. }) = expr.resolve() {
+        assert_eq!(msg.as_str(), "Unknown variable invalid_var");
     } else {
         assert!(false);
     }
@@ -136,7 +138,7 @@ fn test_func_call() {
     let func_b = parse_str("var: 42", &1).unwrap();
     let call = parse_str("func_b 32", &1).unwrap();
     let varscope = ExprSet::from([("func_a".into(), func_a), ("func_b".into(), func_b)]);
-    let value: Expr<TestValue, FRef> = ExprType::Bind(varscope, call).into();
+    let value: Expr<TestValue, FRef> = ExprType::Bind(varscope, call).builtin();
     value.resolve().unwrap();
     assert_eq!(value, ExprType::from(TestValue::Int(42)).builtin());
 }
@@ -147,7 +149,7 @@ fn test_func_call_var_arg() {
     let arg_var = parse_str("32", &1).unwrap();
     let call = parse_str("func arg", &1).unwrap();
     let varscope = ExprSet::from([("func".into(), func_var), ("arg".into(), arg_var)]);
-    let value: Expr<TestValue, FRef> = ExprType::Bind(varscope, call).into();
+    let value: Expr<TestValue, FRef> = ExprType::Bind(varscope, call).builtin();
     value.resolve().unwrap();
     assert_eq!(value, ExprType::from(TestValue::Int(32)).builtin());
 }
@@ -361,7 +363,7 @@ impl ExprBuiltin<TestValue, FRef> for CountingBuiltin {
         "mybuiltin".into()
     }
 
-    fn call(&self, arg: Expr<TestValue, FRef>) -> ops::Result<Expr<TestValue, FRef>> {
+    fn call(&self, arg: Expr<TestValue, FRef>) -> Result<Expr<TestValue, FRef>, FRef> {
         let mut counter = self.0.borrow_mut();
         *counter += 1;
         Ok(arg)
@@ -417,7 +419,8 @@ fn test_builtin_func() {
         "mybuiltin".into(),
         Expr::new_builtin(Rc::new(CountingBuiltin::new())),
     )]);
-    let expr: Expr<TestValue, FRef> = Bind(builtins, parse_str(code, &1).unwrap()).into();
+    let expr: Expr<TestValue, FRef> =
+        ExprType::Bind(builtins, parse_str(code, &1).unwrap()).builtin();
     expr.eval().unwrap();
     assert_eq!(expr, eval("10"));
 }
@@ -439,7 +442,8 @@ fn test_builtin_func_laziness_multiple_calls() {
         "mybuiltin".into(),
         Expr::new_builtin(Rc::new(counter.clone())),
     )]);
-    let expr: Expr<TestValue, FRef> = Bind(builtins, parse_str(code, &1).unwrap()).into();
+    let expr: Expr<TestValue, FRef> =
+        ExprType::Bind(builtins, parse_str(code, &1).unwrap()).builtin();
     expr.eval().unwrap();
     assert_eq!(expr, eval("{ a = 10; b = 10; }"));
     assert_eq!(counter.get(), 1);
@@ -459,7 +463,8 @@ fn test_builtin_func_laziness_no_calls() {
         "mybuiltin".into(),
         Expr::new_builtin(Rc::new(counter.clone())),
     )]);
-    let expr: Expr<TestValue, FRef> = Bind(builtins, parse_str(code, &1).unwrap()).into();
+    let expr: Expr<TestValue, FRef> =
+        ExprType::Bind(builtins, parse_str(code, &1).unwrap()).builtin();
     expr.eval().unwrap();
     assert_eq!(expr, eval("{}"));
     assert_eq!(counter.get(), 0);

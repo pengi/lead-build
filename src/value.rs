@@ -3,10 +3,7 @@ use std::{fmt::Display, rc::Rc};
 use strum::EnumTryAs;
 
 use crate::{
-    lang::{
-        Exportable, ParsableValue,
-        ops::{Error, ExprOps, Result},
-    },
+    lang::{Error, ErrorType, Exportable, ExprOps, ParsableValue, Result},
     path::VirtPath,
     pbbuild::{PbBuild, PbBuildRule},
 };
@@ -64,15 +61,21 @@ impl ParsableValue for Value {
     }
 }
 
-impl ExprOps for Value {
-    fn op_add(lhs: &Self, rhs: &Self) -> Result<Self> {
+impl<F> ExprOps<F> for Value
+where
+    F: Clone,
+{
+    fn op_add(lhs: &Self, rhs: &Self) -> Result<Self, F> {
         match (lhs, rhs) {
             (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs + rhs)),
             (Value::String(lhs), Value::String(rhs)) => Ok(Value::String(lhs.clone() + rhs)),
-            (Value::Path(lhs), Value::String(rhs)) => Err(Error::Type(format!(
-                "Can't use paths as part of strings (yet?) ({} + {})",
-                lhs, rhs
-            ))),
+            (Value::Path(lhs), Value::String(rhs)) => Err(Error::new(
+                ErrorType::Type,
+                format!(
+                    "Can't use paths as part of strings (yet?) ({} + {})",
+                    lhs, rhs
+                ),
+            )),
             (Value::String(_), Value::BuildVar(_)) => {
                 Ok(Value::BuildConcat(vec![lhs.clone(), rhs.clone()]))
             }
@@ -89,100 +92,136 @@ impl ExprOps for Value {
                 vs.push(rhs.clone());
                 Ok(Value::BuildConcat(vs))
             }
-            _ => Err(Error::Type(format!("can't add {} and {}", lhs, rhs))),
+            _ => Err(Error::new(
+                ErrorType::Type,
+                format!("can't add {} and {}", lhs, rhs),
+            )),
         }
     }
 
-    fn op_sub(lhs: &Self, rhs: &Self) -> Result<Self> {
+    fn op_sub(lhs: &Self, rhs: &Self) -> Result<Self, F> {
         match (lhs, rhs) {
             (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs - rhs)),
-            _ => Err(Error::Type(format!("can't subtract {} and {}", lhs, rhs))),
+            _ => Err(Error::new(
+                ErrorType::Type,
+                format!("can't subtract {} and {}", lhs, rhs),
+            )),
         }
     }
 
-    fn op_mult(lhs: &Self, rhs: &Self) -> Result<Self> {
+    fn op_mult(lhs: &Self, rhs: &Self) -> Result<Self, F> {
         match (lhs, rhs) {
             (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs * rhs)),
-            _ => Err(Error::Type(format!("can't multiply {} and {}", lhs, rhs))),
+            _ => Err(Error::new(
+                ErrorType::Type,
+                format!("can't multiply {} and {}", lhs, rhs),
+            )),
         }
     }
 
-    fn op_div(lhs: &Self, rhs: &Self) -> Result<Self> {
+    fn op_div(lhs: &Self, rhs: &Self) -> Result<Self, F> {
         match (lhs, rhs) {
             (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Int(lhs / rhs)),
             (Value::Path(lhs), Value::String(rhs)) => match lhs.clone().step(rhs) {
                 Some(path) => Ok(Value::Path(path)),
                 None => todo!(),
             },
-            _ => Err(Error::Type(format!("can't divide {} and {}", lhs, rhs))),
+            _ => Err(Error::new(
+                ErrorType::Type,
+                format!("can't divide {} and {}", lhs, rhs),
+            )),
         }
     }
 
-    fn op_lt(lhs: &Self, rhs: &Self) -> Result<Self> {
+    fn op_lt(lhs: &Self, rhs: &Self) -> Result<Self, F> {
         match (lhs, rhs) {
             (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Bool(lhs < rhs)),
             (Value::String(lhs), Value::String(rhs)) => Ok(Value::Bool(lhs < rhs)),
-            _ => Err(Error::Type(format!("can't compare {} and {}", lhs, rhs))),
+            _ => Err(Error::new(
+                ErrorType::Type,
+                format!("can't compare {} and {}", lhs, rhs),
+            )),
         }
     }
 
-    fn op_le(lhs: &Self, rhs: &Self) -> Result<Self> {
+    fn op_le(lhs: &Self, rhs: &Self) -> Result<Self, F> {
         match (lhs, rhs) {
             (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Bool(lhs <= rhs)),
             (Value::String(lhs), Value::String(rhs)) => Ok(Value::Bool(lhs <= rhs)),
-            _ => Err(Error::Type(format!("can't compare {} and {}", lhs, rhs))),
+            _ => Err(Error::new(
+                ErrorType::Type,
+                format!("can't compare {} and {}", lhs, rhs),
+            )),
         }
     }
 
-    fn op_gt(lhs: &Self, rhs: &Self) -> Result<Self> {
+    fn op_gt(lhs: &Self, rhs: &Self) -> Result<Self, F> {
         match (lhs, rhs) {
             (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Bool(lhs > rhs)),
             (Value::String(lhs), Value::String(rhs)) => Ok(Value::Bool(lhs > rhs)),
-            _ => Err(Error::Type(format!("can't compare {} and {}", lhs, rhs))),
+            _ => Err(Error::new(
+                ErrorType::Type,
+                format!("can't compare {} and {}", lhs, rhs),
+            )),
         }
     }
 
-    fn op_ge(lhs: &Self, rhs: &Self) -> Result<Self> {
+    fn op_ge(lhs: &Self, rhs: &Self) -> Result<Self, F> {
         match (lhs, rhs) {
             (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Bool(lhs >= rhs)),
             (Value::String(lhs), Value::String(rhs)) => Ok(Value::Bool(lhs >= rhs)),
-            _ => Err(Error::Type(format!("can't compare {} and {}", lhs, rhs))),
+            _ => Err(Error::new(
+                ErrorType::Type,
+                format!("can't compare {} and {}", lhs, rhs),
+            )),
         }
     }
 
-    fn op_eq(lhs: &Self, rhs: &Self) -> Result<Self> {
+    fn op_eq(lhs: &Self, rhs: &Self) -> Result<Self, F> {
         Ok(Value::Bool(lhs == rhs))
     }
 
-    fn op_neq(lhs: &Self, rhs: &Self) -> Result<Self> {
+    fn op_neq(lhs: &Self, rhs: &Self) -> Result<Self, F> {
         Ok(Value::Bool(lhs != rhs))
     }
 
-    fn op_neg(&self) -> Result<Self> {
+    fn op_neg(&self) -> Result<Self, F> {
         match self {
             Value::Int(val) => Ok(Value::Int(-val)),
-            _ => Err(Error::Type(format!("not an integer: {}", self))),
+            _ => Err(Error::new(
+                ErrorType::Type,
+                format!("not an integer: {}", self),
+            )),
         }
     }
 
-    fn op_not(&self) -> Result<Self> {
+    fn op_not(&self) -> Result<Self, F> {
         match self {
             Value::Bool(val) => Ok(Value::Bool(!val)),
-            _ => Err(Error::Type(format!("not a boolean: {}", self))),
+            _ => Err(Error::new(
+                ErrorType::Type,
+                format!("not a boolean: {}", self),
+            )),
         }
     }
 
-    fn as_bool(&self) -> Result<bool> {
+    fn as_bool(&self) -> Result<bool, F> {
         match self {
             Value::Bool(val) => Ok(*val),
-            _ => Err(Error::Type(format!("not a boolean: {}", self))),
+            _ => Err(Error::new(
+                ErrorType::Type,
+                format!("not a boolean: {}", self),
+            )),
         }
     }
 
-    fn as_string(&self) -> Result<String> {
+    fn as_string(&self) -> Result<String, F> {
         match self {
             Value::String(val) => Ok(val.clone()),
-            _ => Err(Error::Type(format!("not a string: {}", self))),
+            _ => Err(Error::new(
+                ErrorType::Type,
+                format!("not a string: {}", self),
+            )),
         }
     }
 

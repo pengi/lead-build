@@ -7,7 +7,7 @@ use std::{
 
 use crate::{
     Expr,
-    lang::{ExprSet, ExprType, Result, ops::ExprBuiltin},
+    lang::{Error, ErrorType, ExprBuiltin, ExprSet, ExprType, Result},
     ninjawriter::{NinjaArg, NinjaFile, NinjaRuleRef},
     value::Value,
 };
@@ -16,15 +16,15 @@ macro_rules! expr_get_arg (
     ($obj:expr, $name:expr, $unpack:ident) => {
         $obj
             .remove($name)
-            .ok_or_else(|| crate::lang::ops::Error::Type(format!("Can't unpack {}", stringify!($name))))?
+            .ok_or_else(|| Error::new(ErrorType::Type, format!("Can't unpack {}", stringify!($name))))?
             .value()?
             .$unpack()
-            .ok_or_else(|| crate::lang::ops::Error::Type(format!("Can't unpack {}", stringify!($name))))?
+            .ok_or_else(|| Error::new(ErrorType::Type, format!("Can't unpack {}", stringify!($name))))?
     };
     ($obj:expr, $name:expr) => {
         $obj
             .remove($name)
-            .ok_or_else(|| crate::lang::ops::Error::Type(format!("Can't unpack {}", stringify!($name))))?
+            .ok_or_else(|| Error::new(ErrorType::Type, format!("Can't unpack {}", stringify!($name))))?
     };
 );
 
@@ -179,10 +179,7 @@ where
         "build".into()
     }
 
-    fn call(
-        &self,
-        arg: crate::lang::Expr<Value, F>,
-    ) -> crate::lang::ops::Result<crate::lang::Expr<Value, F>> {
+    fn call(&self, arg: crate::lang::Expr<Value, F>) -> Result<Expr<Value, F>, F> {
         arg.resolve()?;
         let loc = arg.get_loc();
 
@@ -192,43 +189,48 @@ where
         /* Identify arguments */
         let args = match arg.inner_ref().try_as_func_def_pattern_ref() {
             Some((items, _expr)) => Ok(items.clone()),
-            None => Err(crate::lang::ops::Error::Type(
-                "pb.rule needs to take a pattern function as argument".into(),
+            None => Err(Error::new(
+                ErrorType::Type,
+                "pb.rule needs to take a pattern function as argument",
             )),
         }?;
 
         /* Generate object with placeholders */
-        let var_obj = args
-            .iter()
-            .map(|name| {
-                /* Also store names for validation from PbBuild */
-                rule_args.insert(name.clone());
+        let var_obj = ExprType::Object(
+            args.iter()
+                .map(|name| {
+                    /* Also store names for validation from PbBuild */
+                    rule_args.insert(name.clone());
 
-                /* Generate element */
-                (
-                    name.clone(),
-                    ExprType::from(Value::BuildVar(match name.as_str() {
-                        "input" => "in".into(),
-                        "output" => "out".into(),
-                        _ => name.clone(),
-                    }))
-                    .reref(loc.clone()),
-                )
-            })
-            .collect::<ExprSet<Value, F>>()
-            .into();
+                    /* Generate element */
+                    (
+                        name.clone(),
+                        ExprType::from(Value::BuildVar(match name.as_str() {
+                            "input" => "in".into(),
+                            "output" => "out".into(),
+                            _ => name.clone(),
+                        }))
+                        .reref(loc.clone()),
+                    )
+                })
+                .collect::<ExprSet<Value, F>>(),
+        )
+        .reref(loc.clone());
 
         /* Generate rule function with variable placeholders and call */
-        let rule_func: Expr<Value, F> = ExprType::FuncCall(arg, var_obj).into();
+        let rule_func: Expr<Value, F> = ExprType::FuncCall(arg, var_obj).reref(loc.clone());
         rule_func.resolve()?;
 
         /* Read variables */
         let objargs = match rule_func.inner_ref().try_as_object_ref() {
             Some(args) => Ok(args.clone()),
-            None => Err(crate::lang::ops::Error::Type(format!(
-                "pb.rule function needs to return an object, got {}",
-                rule_func
-            ))),
+            None => Err(Error::new(
+                ErrorType::Type,
+                format!(
+                    "pb.rule function needs to return an object, got {}",
+                    rule_func
+                ),
+            )),
         }?;
 
         /* Convert all variables to ninja rule */
@@ -243,13 +245,13 @@ where
             let ninja_attrs: Vec<NinjaArg> = attrs
                 .into_iter()
                 .map(|e| {
-                    e.resolve().unwrap();
+                    e.resolve()?;
                     match &*e.inner_ref() {
-                        ExprType::Value(attr) => value_to_ninja_arg(attr),
-                        _ => panic!("Rule attr is not a value"),
+                        ExprType::Value(attr) => Ok(value_to_ninja_arg(attr)),
+                        _ => Err(Error::new(ErrorType::Type, "Rule attr is not a value")),
                     }
                 })
-                .collect();
+                .collect::<Result<Vec<NinjaArg>, _>>()?;
 
             vars.push((name, ninja_attrs));
         }
@@ -270,15 +272,16 @@ where
         "build".into()
     }
 
-    fn call(
-        &self,
-        arg: crate::lang::Expr<Value, F>,
-    ) -> crate::lang::ops::Result<crate::lang::Expr<Value, F>> {
+    fn call(&self, arg: crate::lang::Expr<Value, F>) -> Result<crate::lang::Expr<Value, F>, F> {
         arg.resolve()?;
         let loc = arg.get_loc();
 
-        let opt_err =
-            || crate::lang::ops::Error::Type(format!("unknown arg for pb.build, got {}", arg));
+        let opt_err = || {
+            Error::new(
+                ErrorType::Type,
+                format!("unknown arg for pb.build, got {}", arg),
+            )
+        };
 
         /* Read arguments from input object */
         let mut arg_obj = arg
@@ -308,10 +311,10 @@ where
                 ExprType::Value(value) => {
                     Ok(vec![ExprType::from(value.clone()).reref(loc.clone())])
                 }
-                _ => Err(crate::lang::ops::Error::Type(format!(
-                    "field {} is not a list or value",
-                    arg_name
-                ))),
+                _ => Err(Error::new(
+                    ErrorType::Type,
+                    format!("field {} is not a list or value", arg_name),
+                )),
             }?;
 
             for elem in elems.into_iter() {
@@ -323,10 +326,10 @@ where
                         }
                         Ok(value_to_ninja_arg(attr))
                     }
-                    _ => Err(crate::lang::ops::Error::Type(format!(
-                        "incompatible type in build arg {}",
-                        arg_name
-                    ))),
+                    _ => Err(Error::new(
+                        ErrorType::Type,
+                        format!("incompatible type in build arg {}", arg_name),
+                    )),
                 }?);
             }
 
@@ -350,7 +353,7 @@ where
     }
 }
 
-pub fn get_pb_builtins<F>() -> Result<Expr<Value, F>>
+pub fn get_pb_builtins<F>() -> Result<Expr<Value, F>, F>
 where
     F: Clone,
 {
@@ -358,5 +361,5 @@ where
         ("rule".into(), Expr::new_builtin(Rc::new(BuiltinPbRule))),
         ("build".into(), Expr::new_builtin(Rc::new(BuiltinPbBuild))),
     ]);
-    Ok(pbset.into())
+    Ok(ExprType::Object(pbset).builtin())
 }

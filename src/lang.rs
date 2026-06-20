@@ -6,10 +6,6 @@ mod stringdecode;
 #[cfg(test)]
 mod testvalue;
 
-pub use error::{Error, Result};
-pub use expr::{Exportable, Expr, ExprSet, ExprType};
+pub use error::{Error, ErrorType, Referrable, Result};
+pub use expr::{Exportable, Expr, ExprBuiltin, ExprOps, ExprSet, ExprType};
 pub use parser::{ParsableValue, parse_str};
-
-pub mod ops {
-    pub use super::expr::ops::{Error, ExprBuiltin, ExprOps, Result};
-}
