@@ -14,6 +14,7 @@ fn run(args: Args) -> Result<(), VirtPath> {
     let ctx: LangContext = LangContext::new();
     let main_file = VirtPath::virtualize(&args.input, "root");
     let expr: Expr<Value, VirtPath> = ctx.include(main_file)?;
+
     if let Value::Build(build) = expr.value()? {
         let mut ninja_file = NinjaFile::new();
         build.populate_ninja_file(&mut ninja_file);

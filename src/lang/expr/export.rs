@@ -22,17 +22,17 @@ pub trait Exportable {
 impl<T, F> Exportable for super::Expr<T, F>
 where
     T: Clone + PartialEq + Display + ExprOps<F> + Debug + Exportable,
-    F: Clone,
+    F: Clone + Debug,
 {
     fn export(&self, indent: i32, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.inner_ref().export(indent, f)
+        self.inner_ref().tok.export(indent, f)
     }
 }
 
 impl<T, F> Exportable for super::ExprType<T, F>
 where
     T: Clone + PartialEq + Display + ExprOps<F> + Debug + Exportable,
-    F: Clone,
+    F: Clone + Debug,
 {
     fn export(&self, indent: i32, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

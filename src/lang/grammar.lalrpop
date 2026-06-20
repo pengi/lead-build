@@ -5,6 +5,7 @@ use super::{
     ExprUnOp,
     ExprBinOp,
     ExprOps,
+    Exportable,
     ParsableValue,
     Display,
     unpack_str,
@@ -15,7 +16,7 @@ use std::fmt::Debug;
 
 grammar<T, F>(f: &F)
 where
-    T: ParsableValue + Clone + PartialEq + Display + ExprOps<F>,
+    T: ParsableValue + Clone + PartialEq + Display + ExprOps<F> + Exportable + Debug,
     F: Clone + Debug;
 
 pub Expr: Expr<T, F> = {
@@ -50,74 +51,74 @@ pub Expr: Expr<T, F> = {
 // Logical implication            bool     ->  bool                   none    14
 
 ExprFuncDef: Expr<T, F> = {
-    <l: @L> <i:Ident> ":" <e:ExprFuncDef> <r: @R> => ExprType::FuncDefIdent(i, e).loc(l, r, f),
-    <l: @L> "{" <i:(<Ident> ",")*> "..." "}" ":" <e:ExprFuncDef> <r: @R> => ExprType::FuncDefPattern(i, e).loc(l, r, f),
+    <l: @L> <i:Ident> ":" <e:ExprFuncDef> <r: @R> => ExprType::FuncDefIdent(i, e).toexpr(l, r, f),
+    <l: @L> "{" <i:(<Ident> ",")*> "..." "}" ":" <e:ExprFuncDef> <r: @R> => ExprType::FuncDefPattern(i, e).toexpr(l, r, f),
     <ExprLogImpl>
 };
 
 ExprLogImpl: Expr<T, F> = {
-    <l: @L> <lhs:ExprLogOr> "->" <rhs:ExprLogOr> <r: @R> => ExprType::BinOp(ExprBinOp::LogImpl, lhs, rhs).loc(l, r, f),
+    <l: @L> <lhs:ExprLogOr> "->" <rhs:ExprLogOr> <r: @R> => ExprType::BinOp(ExprBinOp::LogImpl, lhs, rhs).toexpr(l, r, f),
     <ExprLogOr>,
 };
 
 ExprLogOr: Expr<T, F> = {
-    <l: @L> <lhs:ExprLogAnd> "||" <rhs:ExprLogAnd> <r: @R> => ExprType::BinOp(ExprBinOp::LogOr, lhs, rhs).loc(l, r, f),
+    <l: @L> <lhs:ExprLogAnd> "||" <rhs:ExprLogAnd> <r: @R> => ExprType::BinOp(ExprBinOp::LogOr, lhs, rhs).toexpr(l, r, f),
     <ExprLogAnd>,
 };
 
 ExprLogAnd: Expr<T, F> = {
-    <l: @L> <lhs:ExprEq> "&&" <rhs:ExprEq> <r: @R> => ExprType::BinOp(ExprBinOp::LogAnd, lhs, rhs).loc(l, r, f),
+    <l: @L> <lhs:ExprEq> "&&" <rhs:ExprEq> <r: @R> => ExprType::BinOp(ExprBinOp::LogAnd, lhs, rhs).toexpr(l, r, f),
     <ExprEq>,
 };
 
 ExprEq: Expr<T, F> = {
-    <l: @L> <lhs:ExprCompare> "==" <rhs:ExprCompare> <r: @R> => ExprType::BinOp(ExprBinOp::Eq, lhs, rhs).loc(l, r, f),
-    <l: @L> <lhs:ExprCompare> "!=" <rhs:ExprCompare> <r: @R> => ExprType::BinOp(ExprBinOp::Neq, lhs, rhs).loc(l, r, f),
+    <l: @L> <lhs:ExprCompare> "==" <rhs:ExprCompare> <r: @R> => ExprType::BinOp(ExprBinOp::Eq, lhs, rhs).toexpr(l, r, f),
+    <l: @L> <lhs:ExprCompare> "!=" <rhs:ExprCompare> <r: @R> => ExprType::BinOp(ExprBinOp::Neq, lhs, rhs).toexpr(l, r, f),
     <ExprCompare>,
 };
 
 ExprCompare: Expr<T, F> = {
-    <l: @L> <lhs:ExprUpdate> "<" <rhs:ExprUpdate> <r: @R> => ExprType::BinOp(ExprBinOp::Lt, lhs, rhs).loc(l, r, f),
-    <l: @L> <lhs:ExprUpdate> "<=" <rhs:ExprUpdate> <r: @R> => ExprType::BinOp(ExprBinOp::Le, lhs, rhs).loc(l, r, f),
-    <l: @L> <lhs:ExprUpdate> ">" <rhs:ExprUpdate> <r: @R> => ExprType::BinOp(ExprBinOp::Gt, lhs, rhs).loc(l, r, f),
-    <l: @L> <lhs:ExprUpdate> ">=" <rhs:ExprUpdate> <r: @R> => ExprType::BinOp(ExprBinOp::Ge, lhs, rhs).loc(l, r, f),
+    <l: @L> <lhs:ExprUpdate> "<" <rhs:ExprUpdate> <r: @R> => ExprType::BinOp(ExprBinOp::Lt, lhs, rhs).toexpr(l, r, f),
+    <l: @L> <lhs:ExprUpdate> "<=" <rhs:ExprUpdate> <r: @R> => ExprType::BinOp(ExprBinOp::Le, lhs, rhs).toexpr(l, r, f),
+    <l: @L> <lhs:ExprUpdate> ">" <rhs:ExprUpdate> <r: @R> => ExprType::BinOp(ExprBinOp::Gt, lhs, rhs).toexpr(l, r, f),
+    <l: @L> <lhs:ExprUpdate> ">=" <rhs:ExprUpdate> <r: @R> => ExprType::BinOp(ExprBinOp::Ge, lhs, rhs).toexpr(l, r, f),
     <ExprUpdate>,
 };
 
 ExprUpdate: Expr<T, F> = {
-    <l: @L> <lhs:ExprUpdate> "//" <rhs:ExprNot> <r: @R> => ExprType::BinOp(ExprBinOp::Update, lhs, rhs).loc(l, r, f),
+    <l: @L> <lhs:ExprUpdate> "//" <rhs:ExprNot> <r: @R> => ExprType::BinOp(ExprBinOp::Update, lhs, rhs).toexpr(l, r, f),
     <ExprNot>,
 };
 
 ExprNot: Expr<T, F> = {
-    <l: @L> "!" <rhs:ExprAddSub> <r: @R> => ExprType::UnOp(ExprUnOp::Not, rhs).loc(l, r, f),
+    <l: @L> "!" <rhs:ExprAddSub> <r: @R> => ExprType::UnOp(ExprUnOp::Not, rhs).toexpr(l, r, f),
     <ExprAddSub>,
 };
 
 ExprAddSub: Expr<T, F> = {
-    <l: @L> <lhs:ExprAddSub> "-" <rhs:ExprMultDiv> <r: @R> => ExprType::BinOp(ExprBinOp::Sub, lhs, rhs).loc(l, r, f),
-    <l: @L> <lhs:ExprAddSub> "+" <rhs:ExprMultDiv> <r: @R> => ExprType::BinOp(ExprBinOp::Add, lhs, rhs).loc(l, r, f),
+    <l: @L> <lhs:ExprAddSub> "-" <rhs:ExprMultDiv> <r: @R> => ExprType::BinOp(ExprBinOp::Sub, lhs, rhs).toexpr(l, r, f),
+    <l: @L> <lhs:ExprAddSub> "+" <rhs:ExprMultDiv> <r: @R> => ExprType::BinOp(ExprBinOp::Add, lhs, rhs).toexpr(l, r, f),
     <ExprMultDiv>,
 };
 
 ExprMultDiv: Expr<T, F> = {
-    <l: @L> <lhs:ExprMultDiv> "*" <rhs:ExprConcat> <r: @R> => ExprType::BinOp(ExprBinOp::Mult, lhs, rhs).loc(l, r, f),
-    <l: @L> <lhs:ExprMultDiv> "/" <rhs:ExprConcat> <r: @R> => ExprType::BinOp(ExprBinOp::Div, lhs, rhs).loc(l, r, f),
+    <l: @L> <lhs:ExprMultDiv> "*" <rhs:ExprConcat> <r: @R> => ExprType::BinOp(ExprBinOp::Mult, lhs, rhs).toexpr(l, r, f),
+    <l: @L> <lhs:ExprMultDiv> "/" <rhs:ExprConcat> <r: @R> => ExprType::BinOp(ExprBinOp::Div, lhs, rhs).toexpr(l, r, f),
     <ExprConcat>,
 };
 
 ExprConcat: Expr<T, F> = {
-    <l: @L> <lhs:ExprConcat> "++" <rhs:ExprHasAttr> <r: @R> => ExprType::BinOp(ExprBinOp::ListConcat, lhs, rhs).loc(l, r, f),
+    <l: @L> <lhs:ExprConcat> "++" <rhs:ExprHasAttr> <r: @R> => ExprType::BinOp(ExprBinOp::ListConcat, lhs, rhs).toexpr(l, r, f),
     <ExprHasAttr>,
 };
 
 ExprHasAttr: Expr<T, F> = {
-    <l: @L> <lhs:ExprNeg> "?" <rhs:Variable> <r: @R> => ExprType::BinOp(ExprBinOp::HasAttr, lhs, rhs).loc(l, r, f),
+    <l: @L> <lhs:ExprNeg> "?" <rhs:Variable> <r: @R> => ExprType::BinOp(ExprBinOp::HasAttr, lhs, rhs).toexpr(l, r, f),
     <ExprNeg>,
 };
 
 ExprNeg: Expr<T, F> = {
-    <l: @L> "-" <rhs:ExprFuncCall> <r: @R> => ExprType::UnOp(ExprUnOp::Neg, rhs).loc(l, r, f),
+    <l: @L> "-" <rhs:ExprFuncCall> <r: @R> => ExprType::UnOp(ExprUnOp::Neg, rhs).toexpr(l, r, f),
     <ExprFuncCall>,
 };
 
@@ -127,17 +128,17 @@ ExprNeg: Expr<T, F> = {
 // instead of:
 //    rule = pb.rule ({input, output}: {...});
 ExprFuncCall: Expr<T, F> = {
-    <l: @L> <efunc:ExprFuncCall> <earg:ExprAttrSel> <r: @R> => ExprType::FuncCall(efunc, earg).loc(l, r, f),
+    <l: @L> <efunc:ExprFuncCall> <earg:ExprAttrSel> <r: @R> => ExprType::FuncCall(efunc, earg).toexpr(l, r, f),
     <ExprAttrSel>,
 };
 
 ExprAttrSel: Expr<T, F> = {
-    <l: @L> <lhs:ExprAttrSel> "." <rhs:Ident> <r: @R> => ExprType::AttrSel(lhs, rhs).loc(l, r, f),
+    <l: @L> <lhs:ExprAttrSel> "." <rhs:Ident> <r: @R> => ExprType::AttrSel(lhs, rhs).toexpr(l, r, f),
     <ExprListComp>,
 };
 
 ExprListComp: Expr<T, F> = {
-    <l: @L> "[" <func:Expr> "<-" <list:ExprTerm> "]" <r: @R> => ExprType::MapList(func, list).loc(l, r, f),
+    <l: @L> "[" <func:Expr> "<-" <list:ExprTerm> "]" <r: @R> => ExprType::MapList(func, list).toexpr(l, r, f),
     <ExprTerm>
 };
 
@@ -151,9 +152,9 @@ ExprTerm: Expr<T, F> = {
     "(" <Expr> ")"
 };
 
-Object: Expr<T, F> = <l: @L> "{" <s:SetStmt*> "}" <r: @R> => ExprType::Object(s.into_iter().collect::<ExprSet<T, F>>()).loc(l, r, f);
+Object: Expr<T, F> = <l: @L> "{" <s:SetStmt*> "}" <r: @R> => ExprType::Object(s.into_iter().collect::<ExprSet<T, F>>()).toexpr(l, r, f);
 
-List: Expr<T, F> = <l: @L> "[" <s:Comma<Expr>> "]" <r: @R> => ExprType::List(s).loc(l, r, f);
+List: Expr<T, F> = <l: @L> "[" <s:Comma<Expr>> "]" <r: @R> => ExprType::List(s).toexpr(l, r, f);
 
 Comma<T>: Vec<T> = { // (1)
     <mut v:(<T> ",")*> <e:T?> => match e { // (2)
@@ -165,17 +166,17 @@ Comma<T>: Vec<T> = { // (1)
     }
 };
 
-Let: Expr<T, F> = <l: @L> "let" <s:SetStmt*> "in" <r: @R> <e:ExprTerm> => ExprType::Let(s, e).loc(l, r, f);
-Bind: Expr<T, F> = <l: @L> "bind" <s:SetStmt*> "in" <r: @R> <e:ExprTerm> => ExprType::Bind(s.into_iter().collect(), e).loc(l, r, f);
+Let: Expr<T, F> = <l: @L> "let" <s:SetStmt*> "in" <r: @R> <e:ExprTerm> => ExprType::Let(s, e).toexpr(l, r, f);
+Bind: Expr<T, F> = <l: @L> "bind" <s:SetStmt*> "in" <r: @R> <e:ExprTerm> => ExprType::Bind(s.into_iter().collect(), e).toexpr(l, r, f);
 SetStmt: (String, Expr<T, F>) = <i:Ident> "=" <e:Expr> ";" => (i, e);
 
-Variable: Expr<T, F> = <l: @L> <s:Ident> <r: @R> => ExprType::Var(s).loc(l, r, f);
+Variable: Expr<T, F> = <l: @L> <s:Ident> <r: @R> => ExprType::Var(s).toexpr(l, r, f);
 
 Ident: String = <s:r"[a-zA-Z][a-zA-Z0-9_]*"> => s.to_string();
 Value: Expr<T, F> = {
-    <l: @L> "true" <r: @R> => unpack_bool(true).loc(l, r, f),
-    <l: @L> "false" <r: @R> => unpack_bool(false).loc(l, r, f),
-    <l: @L> <s:r"[0-9]+"> <r: @R> => unpack_int(s).loc(l, r, f),
+    <l: @L> "true" <r: @R> => unpack_bool(true).toexpr(l, r, f),
+    <l: @L> "false" <r: @R> => unpack_bool(false).toexpr(l, r, f),
+    <l: @L> <s:r"[0-9]+"> <r: @R> => unpack_int(s).toexpr(l, r, f),
     <l: @L> <s:r#""([^"]|\\.)*""#> <r: @R> => unpack_str(s, l, r, f).unwrap(),
 };
 

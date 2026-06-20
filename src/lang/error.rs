@@ -68,8 +68,14 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "{}: {}", self.typ, self.msg)?;
-        for loc in self.locs.iter() {
-            writeln!(f, "  referenced from: {}", loc)?;
+        writeln!(f)?;
+        writeln!(f, "Backtrace:")?;
+        if self.locs.len() > 0 {
+            for (idx, loc) in self.locs.iter().enumerate() {
+                writeln!(f, "  {:3} - {}", idx + 1, loc)?;
+            }
+        } else {
+            writeln!(f, "  ...missing...")?;
         }
         Ok(())
     }
@@ -94,6 +100,14 @@ where
             right,
             file: file.clone(),
         });
+        out
+    }
+
+    pub fn reref(self, loc: &Option<Loc<F>>) -> Self {
+        let mut out = self;
+        if let Some(loc) = loc {
+            out.locs.push(loc.clone());
+        }
         out
     }
 }

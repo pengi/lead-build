@@ -1,5 +1,5 @@
 use super::error::{Error, ErrorType, Result};
-use super::expr::{Expr, ExprBinOp, ExprOps, ExprSet, ExprType, ExprUnOp};
+use super::expr::{Exportable, Expr, ExprBinOp, ExprOps, ExprSet, ExprType, ExprUnOp};
 use super::stringdecode::{StringType, string_decode};
 use std::fmt::{Debug, Display};
 lalrpop_mod!(grammar, "lang/grammar.rs");
@@ -54,7 +54,7 @@ where
 
 pub fn parse_str<T, F>(code: &str, file: &F) -> Result<Expr<T, F>, F>
 where
-    T: ParsableValue + Clone + PartialEq + Display + ExprOps<F>,
+    T: ParsableValue + Clone + PartialEq + Display + ExprOps<F> + Exportable + Debug,
     F: Clone + Debug,
 {
     let parser = grammar::ExprParser::new();
@@ -66,7 +66,7 @@ where
 
 fn unpack_str<T, F>(input: &str, left: usize, right: usize, file: &F) -> Result<Expr<T, F>, F>
 where
-    T: ParsableValue + Clone + PartialEq + Display + ExprOps<F>,
+    T: ParsableValue + Clone + PartialEq + Display + ExprOps<F> + Exportable + Debug,
     F: Clone + Debug,
 {
     let mut out = String::new();
@@ -107,13 +107,13 @@ where
     for part in parts {
         let part_expr: Expr<T, F> = match part {
             StringType::Str(s) => {
-                ExprType::Value(T::parse_string(s).unwrap()).loc(left, right, file)
+                ExprType::Value(T::parse_string(s).unwrap()).toexpr(left, right, file)
             }
             StringType::Expr(code) => parse_str(&code, file)?,
         };
         out_expr = match out_expr {
             Some(prev) => {
-                Some(ExprType::BinOp(ExprBinOp::Add, prev, part_expr).loc(left, right, file))
+                Some(ExprType::BinOp(ExprBinOp::Add, prev, part_expr).toexpr(left, right, file))
             }
             None => Some(part_expr),
         }

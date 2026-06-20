@@ -1,7 +1,7 @@
 use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet},
-    fmt::Display,
+    fmt::{Debug, Display},
     rc::Rc,
 };
 
@@ -173,7 +173,7 @@ pub struct BuiltinPbRule;
 
 impl<F> ExprBuiltin<Value, F> for BuiltinPbRule
 where
-    F: Clone,
+    F: Clone + Debug,
 {
     fn get_name(&self) -> String {
         "build".into()
@@ -187,7 +187,7 @@ where
         let mut rule_args: BTreeSet<String> = BTreeSet::new();
 
         /* Identify arguments */
-        let args = match arg.inner_ref().try_as_func_def_pattern_ref() {
+        let args = match arg.inner_ref().tok.try_as_func_def_pattern_ref() {
             Some((items, _expr)) => Ok(items.clone()),
             None => Err(Error::new(
                 ErrorType::Type,
@@ -222,7 +222,7 @@ where
         rule_func.resolve()?;
 
         /* Read variables */
-        let objargs = match rule_func.inner_ref().try_as_object_ref() {
+        let objargs = match rule_func.inner_ref().tok.try_as_object_ref() {
             Some(args) => Ok(args.clone()),
             None => Err(Error::new(
                 ErrorType::Type,
@@ -237,7 +237,7 @@ where
         let mut vars: Vec<(String, Vec<NinjaArg>)> = Vec::new();
         for (name, expr) in objargs.into_iter() {
             expr.resolve()?;
-            let attrs = match &*expr.inner_ref() {
+            let attrs = match &(&*expr.inner_ref()).tok {
                 ExprType::List(exprs) => exprs.clone(),
                 ExprType::Value(value) => vec![ExprType::from(value.clone()).reref(loc.clone())],
                 _ => panic!("pb.rule function needs to return an object"),
@@ -246,7 +246,7 @@ where
                 .into_iter()
                 .map(|e| {
                     e.resolve()?;
-                    match &*e.inner_ref() {
+                    match &(&*e.inner_ref()).tok {
                         ExprType::Value(attr) => Ok(value_to_ninja_arg(attr)),
                         _ => Err(Error::new(ErrorType::Type, "Rule attr is not a value")),
                     }
@@ -266,7 +266,7 @@ pub struct BuiltinPbBuild;
 
 impl<F> ExprBuiltin<Value, F> for BuiltinPbBuild
 where
-    F: Clone,
+    F: Clone + Debug,
 {
     fn get_name(&self) -> String {
         "build".into()
@@ -287,6 +287,7 @@ where
         let mut arg_obj = arg
             .inner_ref()
             .clone()
+            .tok
             .try_as_object()
             .ok_or_else(opt_err)?;
         let rule = expr_get_arg!(arg_obj, "rule", try_as_build_rule);
@@ -306,7 +307,7 @@ where
 
             let mut value: Vec<NinjaArg> = vec![];
 
-            let elems: Vec<Expr<Value, F>> = match &*build_arg.inner_ref() {
+            let elems: Vec<Expr<Value, F>> = match &(&*build_arg.inner_ref()).tok {
                 ExprType::List(exprs) => Ok(exprs.clone()),
                 ExprType::Value(value) => {
                     Ok(vec![ExprType::from(value.clone()).reref(loc.clone())])
@@ -319,7 +320,7 @@ where
 
             for elem in elems.into_iter() {
                 elem.resolve()?;
-                value.push(match &*elem.inner_ref() {
+                value.push(match &(&*elem.inner_ref()).tok {
                     ExprType::Value(attr) => {
                         if let Value::Build(build) = attr {
                             deps.push(build.clone());
@@ -355,7 +356,7 @@ where
 
 pub fn get_pb_builtins<F>() -> Result<Expr<Value, F>, F>
 where
-    F: Clone,
+    F: Clone + Debug,
 {
     let pbset = ExprSet::from([
         ("rule".into(), Expr::new_builtin(Rc::new(BuiltinPbRule))),
