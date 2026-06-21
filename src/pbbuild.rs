@@ -1,8 +1,8 @@
 use std::{
-    cell::RefCell,
     collections::{BTreeMap, BTreeSet},
     fmt::{Debug, Display},
     rc::Rc,
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
 use crate::{
@@ -29,9 +29,23 @@ macro_rules! expr_get_arg (
     };
 );
 
+/*
+ * Generate unique ID
+ */
+
+static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
+
+fn unique_id() -> usize {
+    NEXT_ID.fetch_add(1, Ordering::Relaxed)
+}
+
+/*
+ * Build
+ */
+
 #[derive(PartialEq, Debug)]
 pub struct PbBuildRule {
-    reference: RefCell<Option<NinjaRuleRef>>,
+    id: usize,
     name: String,
     rule_args: BTreeSet<String>,
     rule_vars: Vec<(String, Vec<NinjaArg>)>,
@@ -46,7 +60,7 @@ impl Display for PbBuildRule {
 impl PbBuildRule {
     fn new(rule_args: BTreeSet<String>, rule_vars: Vec<(String, Vec<NinjaArg>)>) -> Self {
         PbBuildRule {
-            reference: None.into(),
+            id: unique_id(),
             name: Self::get_name(&rule_vars),
             rule_args,
             rule_vars,
@@ -88,29 +102,25 @@ impl PbBuildRule {
     }
 
     fn populate_ninja_file(&self, nf: &mut NinjaFile) -> NinjaRuleRef {
-        /*
-         * If already generated, just output reference
-         */
-        if let Some(rule) = &*self.reference.borrow() {
-            return rule.clone();
-        }
+        if let Some(ruleref) = nf.get_rule_ref(self.id) {
+            ruleref
+        } else {
+            /* Create rule base */
+            // TODO: More than just index numbers of ninja rules
+            let rule = nf.rule(self.id, &self.name);
 
-        /* Create rule base */
-        // TODO: More than just index numbers of ninja rules
-        let rule = nf.rule(&self.name);
-
-        for (var_name, var_args) in self.rule_vars.iter() {
-            rule.var(var_name, var_args.clone());
+            for (var_name, var_args) in self.rule_vars.iter() {
+                rule.var(var_name, var_args.clone());
+            }
+            /* Sore reference and write back */
+            rule.as_ref()
         }
-        /* Sore reference and write back */
-        let ruleref = rule.as_ref();
-        self.reference.replace(Some(ruleref.clone()));
-        ruleref
     }
 }
 
 #[derive(PartialEq, Debug)]
 pub struct PbBuild {
+    id: usize,
     rule: Rc<PbBuildRule>,
     input: Vec<NinjaArg>,
     output: Vec<NinjaArg>,
@@ -126,21 +136,23 @@ impl Display for PbBuild {
 
 impl PbBuild {
     pub fn populate_ninja_file(&self, nf: &mut NinjaFile) {
-        for dep in self.deps.iter() {
-            /* TODO: Block duplicates */
-            dep.populate_ninja_file(nf);
-        }
+        if !nf.has_build(self.id) {
+            for dep in self.deps.iter() {
+                /* TODO: Block duplicates */
+                dep.populate_ninja_file(nf);
+            }
 
-        let rule = self.rule.populate_ninja_file(nf);
-        let build = nf.build(&rule);
-        for inp in self.input.iter() {
-            build.input(inp.clone());
-        }
-        for outp in self.output.iter() {
-            build.output(outp.clone());
-        }
-        for (var_name, var_attrs) in self.args.iter() {
-            build.var(var_name, var_attrs.clone());
+            let rule = self.rule.populate_ninja_file(nf);
+            let build = nf.build(self.id, &rule);
+            for inp in self.input.iter() {
+                build.input(inp.clone());
+            }
+            for outp in self.output.iter() {
+                build.output(outp.clone());
+            }
+            for (var_name, var_attrs) in self.args.iter() {
+                build.var(var_name, var_attrs.clone());
+            }
         }
     }
 }
@@ -345,6 +357,7 @@ where
         }
 
         Ok(ExprType::Value(Value::Build(Rc::new(PbBuild {
+            id: unique_id(),
             rule,
             input,
             output,
@@ -473,4 +486,19 @@ pub fn get_pb_builtins() -> Result<Expr<Value, VirtPath>, VirtPath> {
         ("retype".into(), Expr::new_builtin(Rc::new(BuiltinPbRetype))),
     ]);
     Ok(ExprType::Object(pbset).builtin())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_unique_id() {
+        /* Just guard against obvious errors with static var here... */
+        let mut set: BTreeSet<usize> = BTreeSet::new();
+        for _ in 0..1000 {
+            let id = unique_id();
+            assert!(set.insert(id));
+        }
+    }
 }

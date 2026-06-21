@@ -82,6 +82,18 @@ fn run(args: Args) -> Result<(), VirtPath> {
 
     add_expr_to_ninjafile(&expr, &mut ninja_file)?;
 
+    let errors = ninja_file.validate();
+    if errors.len() > 0 {
+        return Err(Error::new(
+            ErrorType::Custom,
+            format!(
+                "Error generating {}:\n  {}",
+                output.display(),
+                errors.join("\n  ")
+            ),
+        ));
+    }
+
     let output_file =
         File::create(output).or_else(|e| Err(Error::new(ErrorType::Custom, e.to_string())))?;
     let mut writer = BufWriter::new(&output_file);

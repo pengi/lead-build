@@ -6,7 +6,7 @@ use std::{
 
 use crate::lang::Referrable;
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct VirtPath {
     name: String,
     root: PathBuf,
@@ -121,10 +121,13 @@ impl VirtPath {
     }
 
     #[cfg(test)]
-    fn new(name: impl ToString) -> VirtPath {
-        Self::virtualize(&PathBuf::from("/file"), name)
-            .parent()
-            .unwrap()
+    pub fn new(name: impl ToString) -> VirtPath {
+        VirtPath {
+            name: name.to_string(),
+            root: PathBuf::from("."),
+            locked_parts: vec![],
+            parts: vec![],
+        }
     }
 }
 
