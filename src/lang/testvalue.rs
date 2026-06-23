@@ -52,6 +52,9 @@ impl ExprOps<FRef> for TestValue {
     fn op_add(lhs: &Self, rhs: &Self) -> Result<Self, FRef> {
         match (lhs, rhs) {
             (TestValue::Int(lhs), TestValue::Int(rhs)) => Ok(TestValue::Int(lhs + rhs)),
+            (TestValue::String(lhs), TestValue::String(rhs)) => {
+                Ok(TestValue::String(lhs.to_string() + rhs))
+            }
             _ => Err(Error::new(
                 ErrorType::Type,
                 format!("can't add {} and {}", lhs, rhs),

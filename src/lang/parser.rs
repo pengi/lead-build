@@ -122,7 +122,9 @@ where
         }
     }
 
-    Ok(out_expr.unwrap())
+    Ok(out_expr
+        .or_else(|| Some(ExprType::Value(T::parse_string("").unwrap()).toexpr(left, right, file)))
+        .unwrap())
 }
 
 fn unpack_int<T, F>(input: &str) -> ExprType<T, F>

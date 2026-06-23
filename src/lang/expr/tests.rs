@@ -590,6 +590,21 @@ fn test_list_fold() {
 }
 
 #[test]
+fn test_list_fold_concat_strings() {
+    assert_eq!(
+        eval(
+            r#"
+            let
+                strconcat = |strs| (|p f| (p + f) <- "" .. strs );
+            in
+                strconcat [ "hello", "rld" ]
+            "#
+        ),
+        eval(r#" "hellorld" "#)
+    );
+}
+
+#[test]
 fn test_list_map_list_to_list() {
     assert_eq!(eval("[ |a| (a*2) <- [1, 2, 3] ]"), eval("[2, 4, 6]"));
 }
