@@ -44,7 +44,7 @@ fn test_eval_list() {
 
 #[test]
 fn test_func_in_let_res() {
-    assert_eq!(eval("let a = x: (x+1); in (a 12)"), eval("13"));
+    assert_eq!(eval("let a = |x| (x+1); in (a 12)"), eval("13"));
 }
 
 #[test]
@@ -134,8 +134,8 @@ fn test_let_set_var_seq() {
 
 #[test]
 fn test_func_call() {
-    let func_a = parse_str("var: 13", &1).unwrap();
-    let func_b = parse_str("var: 42", &1).unwrap();
+    let func_a = parse_str("|var| 13", &1).unwrap();
+    let func_b = parse_str("|var| 42", &1).unwrap();
     let call = parse_str("func_b 32", &1).unwrap();
     let varscope = ExprSet::from([("func_a".into(), func_a), ("func_b".into(), func_b)]);
     let value: Expr<TestValue, FRef> = ExprType::Bind(varscope, call).builtin();
@@ -145,7 +145,7 @@ fn test_func_call() {
 
 #[test]
 fn test_func_call_var_arg() {
-    let func_var = parse_str("var: var", &1).unwrap();
+    let func_var = parse_str("|var| var", &1).unwrap();
     let arg_var = parse_str("32", &1).unwrap();
     let call = parse_str("func arg", &1).unwrap();
     let varscope = ExprSet::from([("func".into(), func_var), ("arg".into(), arg_var)]);
@@ -157,7 +157,7 @@ fn test_func_call_var_arg() {
 #[test]
 fn test_func_call_order() {
     assert_eq! {
-        eval("let f = a: b: (a+b); in (f 3 4)"),
+        eval("let f = |a| |b| (a+b); in (f 3 4)"),
         eval("7"),
     }
 }
@@ -168,7 +168,7 @@ fn test_func_call_resolved() {
         eval(r#"
                 let
                     a = 12;
-                    func = test: {
+                    func = |test| {
                         var = test;
                     };
                 in
@@ -186,7 +186,7 @@ fn test_func_call_bound() {
         eval(r#"
                 let
                     a = 12;
-                    func = test: {
+                    func = |test| {
                         var = a;
                     };
                 in
@@ -206,7 +206,7 @@ fn test_func_call_resolved_stacked_let() {
                     a = 12;
                 in
                 let
-                    func = test: {
+                    func = |test| {
                         var = test;
                     };
                 in
@@ -225,7 +225,7 @@ fn test_func_call_pattern() {
                 let
                     a = 12;
                     b = 13;
-                    func = { a, b, ... }: {
+                    func = |{ a, b, ... }| {
                         var = b;
                     };
                 in
@@ -241,12 +241,57 @@ fn test_func_call_pattern() {
 }
 
 #[test]
+#[should_panic]
+fn test_func_call_pattern_needall() {
+    eval(
+        r#"
+                let
+                    func = |{ a, b }| {
+                        var = b;
+                    };
+                in
+                {
+                    stuff = func {
+                        a = 15;
+                        b = 74;
+                        c = 123;
+                    };
+                }
+            "#,
+    );
+}
+
+#[test]
+#[should_panic]
+fn test_func_call_pattern_extra_args() {
+    assert_eq!(
+        eval(
+            r#"
+                let
+                    func = |{ a, b, ... }| {
+                        var = b;
+                    };
+                in
+                {
+                    stuff = func {
+                        a = 15;
+                        b = 74;
+                        c = 123;
+                    };
+                }
+            "#,
+        ),
+        eval("{var = 74;}")
+    );
+}
+
+#[test]
 fn test_var_through_func_call() {
     // TODO: "let var = 3 in func var" should work, or give an error...
     assert_eq! {
         eval(r#"
                 let
-                    func = (a: a+2);
+                    func = (|a| a+2);
                 in
                 let
                     myvar = 13;
@@ -264,7 +309,7 @@ fn test_eval() {
                 let
                     a = 12;
                     b = { inner = 43; };
-                    myfunc = {target, ...}: { var = b; };
+                    myfunc = |{target, ...}| { var = b; };
                 in
                 {
                     app = myfunc {
@@ -373,9 +418,118 @@ impl ExprBuiltin<TestValue, FRef> for CountingBuiltin {
 #[test]
 fn test_parse_func_call_from_obj() {
     assert_eq!(
-        eval("let lib = { func = a: a+3; }; in (lib.func 7)"),
+        eval("let lib = { func = |a| a+3; }; in (lib.func 7)"),
         eval("10")
     );
+}
+
+#[test]
+fn test_parse_func_call_match_tuple() {
+    assert_eq!(
+        eval(
+            r#"
+        let
+            func = |(a,b)| 10*a + b;
+        in
+            func (3,4)
+        "#
+        ),
+        eval("34")
+    );
+}
+
+#[test]
+fn test_parse_func_call_match_alias() {
+    assert_eq!(
+        eval(
+            r#"
+        let
+            func = |(a,b @ bx) @ x| {
+                a = a;
+                b = b;
+                bx = bx;
+                x = x;
+            };
+        in
+            func (3,4)
+        "#
+        ),
+        eval(
+            r#"
+            {
+                a = 3;
+                b = 4;
+                bx = 4;
+                x = (3,4);
+            }
+        "#
+        )
+    );
+}
+
+#[test]
+fn test_parse_func_call_match_obj_rename() {
+    assert_eq!(
+        eval(
+            r#"
+        let
+            a = 10;
+            b = 11;
+            func = |{a = ax, b = _}| {
+                a = a;
+                b = b;
+                ax = ax;
+            };
+        in
+            func { a = 20; b = 21; }
+        "#
+        ),
+        eval(
+            r#"
+            {
+                a = 10;
+                b = 11;
+                ax = 20;
+            }
+        "#
+        )
+    );
+}
+
+#[test]
+fn test_parse_func_no_args() {
+    assert_eq!(
+        eval(
+            r#"
+        let
+            func = | | 12;
+        in
+            func
+        "#
+        ),
+        eval("12")
+    );
+}
+
+#[test]
+fn test_parse_func_multi_args() {
+    assert_eq!(
+        eval(
+            r#"
+        let
+            func = |a b c| 100*a + 10*b + 1*c;
+            x = func 2 3;
+        in
+            x 4
+        "#
+        ),
+        eval("234")
+    );
+}
+
+#[test]
+fn test_parse_func_multi_args_syntax() {
+    assert_eq!(eval("|a b c| x"), eval("|a| |b| |c| x"),);
 }
 
 #[test]
@@ -412,8 +566,32 @@ fn test_list_commas() {
 }
 
 #[test]
-fn test_list_comprehension() {
-    assert_eq!(eval("[ a: (a*2) <- [1, 2, 3] ]"), eval("[2, 4, 6]"));
+fn test_list_map_list_to_list() {
+    assert_eq!(eval("[ |a| (a*2) <- [1, 2, 3] ]"), eval("[2, 4, 6]"));
+}
+
+#[test]
+fn test_list_map_list_to_obj() {
+    assert_eq!(
+        eval("{ |a| (a, 3) <- [\"a\", \"b\", \"c\"] }"),
+        eval("{a=3; b=3; c=3;}")
+    );
+}
+
+#[test]
+fn test_list_map_obj_to_list() {
+    assert_eq!(
+        eval("[ |(k, v)| v <- {a=1; b=2; c=3;} ]"),
+        eval("[1, 2, 3]")
+    );
+}
+
+#[test]
+fn test_list_map_obj_to_obj() {
+    assert_eq!(
+        eval("{ |(k, v)| (k, v*3) <- {a=1; b=2; c=3;} }"),
+        eval("{a=3; b=6; c=9;}")
+    );
 }
 
 #[test]

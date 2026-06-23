@@ -83,7 +83,7 @@ impl LangContext {
     pub fn include(&self, file: VirtPath) -> Result<Expr<Value, VirtPath>, VirtPath> {
         let file_expr = self.read_file(&file)?;
         let file_args = self.setup_file_args(file)?;
-        let called_expr: Expr<Value, VirtPath> = ExprType::FuncCall(file_expr, file_args).builtin(); // TODO: Should this outermost builtin actually be a .loc()?
+        let called_expr: Expr<Value, VirtPath> = ExprType::FuncCall(file_args, file_expr).builtin(); // TODO: Should this outermost builtin actually be a .loc()?
         Ok(called_expr)
     }
 }

@@ -1,5 +1,8 @@
 use super::error::{Error, ErrorType, Result};
-use super::expr::{Exportable, Expr, ExprBinOp, ExprOps, ExprSet, ExprType, ExprUnOp};
+use super::expr::{
+    Exportable, Expr, ExprBinOp, ExprMapType, ExprOps, ExprSet, ExprType, ExprUnOp,
+    matcher::Matcher,
+};
 use super::stringdecode::{StringType, string_decode};
 use std::fmt::{Debug, Display};
 lalrpop_mod!(grammar, "lang/grammar.rs");
@@ -293,34 +296,8 @@ mod tests {
         let code = "hej 12";
         assert_eq!(
             ExprType::from(ExprType::FuncCall(
+                ExprType::Value(TestValue::Int(12)).builtin(),
                 ExprType::Var("hej".into()).builtin(),
-                ExprType::Value(TestValue::Int(12)).builtin()
-            ))
-            .builtin(),
-            eval(code)
-        );
-    }
-
-    #[test]
-    fn test_parse_func_def_ident() {
-        let code = "hej: 12";
-        assert_eq!(
-            ExprType::from(ExprType::FuncDefIdent(
-                "hej".into(),
-                ExprType::Value(TestValue::Int(12)).builtin()
-            ))
-            .builtin(),
-            eval(code)
-        );
-    }
-
-    #[test]
-    fn test_parse_func_def_pattern_variadic() {
-        let code = "{ hej, hopp, svej, ... }: 12";
-        assert_eq!(
-            ExprType::from(ExprType::FuncDefPattern(
-                vec!["hej".into(), "hopp".into(), "svej".into()],
-                ExprType::Value(TestValue::Int(12)).builtin()
             ))
             .builtin(),
             eval(code)

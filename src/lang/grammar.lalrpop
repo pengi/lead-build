@@ -5,9 +5,11 @@ use super::{
     ExprUnOp,
     ExprBinOp,
     ExprOps,
+    ExprMapType,
     Exportable,
     ParsableValue,
     Display,
+    Matcher,
     unpack_str,
     unpack_int,
     unpack_bool
@@ -51,8 +53,13 @@ pub Expr: Expr<T, F> = {
 // Logical implication            bool     ->  bool                   none    14
 
 ExprFuncDef: Expr<T, F> = {
-    <l: @L> <i:Ident> ":" <e:ExprFuncDef> <r: @R> => ExprType::FuncDefIdent(i, e).toexpr(l, r, f),
-    <l: @L> "{" <i:(<Ident> ",")*> "..." "}" ":" <e:ExprFuncDef> <r: @R> => ExprType::FuncDefPattern(i, e).toexpr(l, r, f),
+    <l: @L> "|" <ms:Matcher*> "|" <e:ExprFuncDef> <r: @R> => {
+        let mut e = e;
+        for m in ms.into_iter().rev() {
+            e = ExprType::FuncDef(m, e).toexpr(l, r, f);
+        }
+        e
+    },
     <ExprLogImpl>
 };
 
@@ -113,7 +120,7 @@ ExprConcat: Expr<T, F> = {
 };
 
 ExprHasAttr: Expr<T, F> = {
-    <l: @L> <lhs:ExprNeg> "?" <rhs:Variable> <r: @R> => ExprType::BinOp(ExprBinOp::HasAttr, lhs, rhs).toexpr(l, r, f),
+    <l: @L> <lhs:ExprNeg> "?" <rhs:ExprVar> <r: @R> => ExprType::BinOp(ExprBinOp::HasAttr, lhs, rhs).toexpr(l, r, f),
     <ExprNeg>,
 };
 
@@ -128,7 +135,7 @@ ExprNeg: Expr<T, F> = {
 // instead of:
 //    rule = pb.rule ({input, output}: {...});
 ExprFuncCall: Expr<T, F> = {
-    <l: @L> <efunc:ExprFuncCall> <earg:ExprAttrSel> <r: @R> => ExprType::FuncCall(efunc, earg).toexpr(l, r, f),
+    <l: @L> <efunc:ExprFuncCall> <earg:ExprAttrSel> <r: @R> => ExprType::FuncCall(earg, efunc).toexpr(l, r, f),
     <ExprAttrSel>,
 };
 
@@ -138,30 +145,86 @@ ExprAttrSel: Expr<T, F> = {
 };
 
 ExprListComp: Expr<T, F> = {
-    <l: @L> "[" <func:Expr> "<-" <list:ExprTerm> "]" <r: @R> => ExprType::MapList(func, list).toexpr(l, r, f),
+    <l: @L> "[" <func:Expr> "<-" <list:ExprTerm> "]" <r: @R> => ExprType::Map(ExprMapType::List, func, list).toexpr(l, r, f),
+    <l: @L> "{" <func:Expr> "<-" <list:ExprTerm> "}" <r: @R> => ExprType::Map(ExprMapType::Object, func, list).toexpr(l, r, f),
     <ExprTerm>
 };
 
 ExprTerm: Expr<T, F> = {
-    <Object>,
-    <List>,
-    <Tuple>,
-    <Value>,
-    <Let>,
-    <Bind>,
-    <Variable>,
+    <ExprObject>,
+    <ExprList>,
+    <ExprTuple>,
+    <ExprValue>,
+    <ExprLet>,
+    <ExprBind>,
+    <ExprVar>,
     "(" <Expr> ")"
 };
 
-Object: Expr<T, F> = <l: @L> "{" <s:SetStmt*> "}" <r: @R> => ExprType::Object(s.into_iter().collect::<ExprSet<T, F>>()).toexpr(l, r, f);
-List: Expr<T, F> = <l: @L> "[" <s:Comma<Expr>> "]" <r: @R> => ExprType::List(s).toexpr(l, r, f);
-Tuple: Expr<T, F> = {
-    <l: @L> "(" <sa:Expr> "," <mut s:Comma<Expr>> ")" <r: @R> => { s.insert(0, sa); ExprType::Tuple(s).toexpr(l, r, f) },
-    <l: @L> "(" "," ")" <r: @R> => ExprType::Tuple(vec![]).toexpr(l, r, f)
+ExprObject: Expr<T, F> = <l: @L> "{" <s:AssignStmt*> "}" <r: @R> => ExprType::Object(s.into_iter().collect::<ExprSet<T, F>>()).toexpr(l, r, f);
+ExprList: Expr<T, F> = <l: @L> "[" <s:Comma<Expr>> "]" <r: @R> => ExprType::List(s).toexpr(l, r, f);
+ExprTuple: Expr<T, F> = <l: @L> "(" <s:TupleComma<Expr>> ")" <r: @R> => ExprType::Tuple(s).toexpr(l, r, f);
+
+ExprLet: Expr<T, F> = <l: @L> "let" <s:SetStmt*> "in" <r: @R> <e:ExprTerm> => ExprType::Let(s, e).toexpr(l, r, f);
+ExprBind: Expr<T, F> = <l: @L> "bind" <s:AssignStmt*> "in" <r: @R> <e:ExprTerm> => ExprType::Bind(s.into_iter().collect(), e).toexpr(l, r, f);
+
+
+// AssignStmt assigns a value to a variable, while SetStmt also applies pattern
+// match, for use in a "let" keyword
+//
+// TODO: Implement pattern match
+SetStmt: (String, Expr<T, F>) = <i:Ident> "=" <e:Expr> ";" => (i, e);
+AssignStmt: (String, Expr<T, F>) = <i:Ident> "=" <e:Expr> ";" => (i, e);
+
+ExprVar: Expr<T, F> = <l: @L> <s:Ident> <r: @R> => ExprType::Var(s).toexpr(l, r, f);
+
+
+//
+// Matcher pattern
+//
+
+Matcher: Matcher = {
+    <m:MatcherInner> "@" <i:Ident> => Matcher::Alias(m.into(), i),
+    <MatcherInner>
 };
 
-Comma<T>: Vec<T> = { // (1)
-    <mut v:(<T> ",")*> <e:T?> => match e { // (2)
+MatcherInner: Matcher = {
+    <i:Ident> => Matcher::Ident(i),
+    "_" => Matcher::DontCare,
+    "(" <s:TupleComma<Matcher>> ")" => Matcher::Tuple(s),
+    "{" <mut v:(<MatcherVar> ",")*> <e:MatcherVar?> "}" => Matcher::Object(match e {
+        None => v,
+        Some(e) => {
+            v.push(e);
+            v
+        }
+    }, true),
+    "{" <v:(<MatcherVar> ",")*> "..." "}" => Matcher::Object(v, false),
+};
+
+MatcherVar: (String, Matcher) = {
+    <i:Ident> => (i.clone(), Matcher::Ident(i)),
+    <i:Ident> "=" <m:Matcher> => (i, m),
+};
+
+//
+// Terminals
+//
+
+Ident: String = <s:r"[a-zA-Z][a-zA-Z0-9_]*"> => s.to_string();
+ExprValue: Expr<T, F> = {
+    <l: @L> "true" <r: @R> => unpack_bool(true).toexpr(l, r, f),
+    <l: @L> "false" <r: @R> => unpack_bool(false).toexpr(l, r, f),
+    <l: @L> <s:r"[0-9]+"> <r: @R> => unpack_int(s).toexpr(l, r, f),
+    <l: @L> <s:r#""([^"]|\\.)*""#> <r: @R> => unpack_str(s, l, r, f).unwrap(),
+};
+
+//
+// Library
+//
+
+Comma<T>: Vec<T> = {
+    <mut v:(<T> ",")*> <e:T?> => match e {
         None => v,
         Some(e) => {
             v.push(e);
@@ -170,17 +233,23 @@ Comma<T>: Vec<T> = { // (1)
     }
 };
 
-Let: Expr<T, F> = <l: @L> "let" <s:SetStmt*> "in" <r: @R> <e:ExprTerm> => ExprType::Let(s, e).toexpr(l, r, f);
-Bind: Expr<T, F> = <l: @L> "bind" <s:SetStmt*> "in" <r: @R> <e:ExprTerm> => ExprType::Bind(s.into_iter().collect(), e).toexpr(l, r, f);
-SetStmt: (String, Expr<T, F>) = <i:Ident> "=" <e:Expr> ";" => (i, e);
-
-Variable: Expr<T, F> = <l: @L> <s:Ident> <r: @R> => ExprType::Var(s).toexpr(l, r, f);
-
-Ident: String = <s:r"[a-zA-Z][a-zA-Z0-9_]*"> => s.to_string();
-Value: Expr<T, F> = {
-    <l: @L> "true" <r: @R> => unpack_bool(true).toexpr(l, r, f),
-    <l: @L> "false" <r: @R> => unpack_bool(false).toexpr(l, r, f),
-    <l: @L> <s:r"[0-9]+"> <r: @R> => unpack_int(s).toexpr(l, r, f),
-    <l: @L> <s:r#""([^"]|\\.)*""#> <r: @R> => unpack_str(s, l, r, f).unwrap(),
+StrictComma<T>: Vec<T> = {
+    <mut v:(<T> ",")*> <e:T> => match e {
+        None => v,
+        Some(e) => {
+            v.push(e);
+            v
+        }
+    }
 };
 
+TupleComma<T>: Vec<T> = {
+    "," => vec![],
+    <mut v:(<T> ",")+> <e:T?> => match e {
+        None => v,
+        Some(e) => {
+            v.push(e);
+            v
+        }
+    }
+};

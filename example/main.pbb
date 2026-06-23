@@ -1,4 +1,4 @@
-{ cwd, pb, include, ... }:
+|{ cwd, pb, include, ... }|
 let
     objdir = cwd / "obj";
 

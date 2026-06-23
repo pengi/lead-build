@@ -1,7 +1,9 @@
 mod export;
+pub mod matcher;
 
 use super::error::{Error, ErrorType, Loc, Result};
 pub use export::Exportable;
+pub use matcher::Matcher;
 use std::{
     cell::{Ref, RefCell},
     collections::BTreeMap,
@@ -29,6 +31,7 @@ pub trait ExprOps<F>: Sized {
     fn as_bool(&self) -> Result<bool, F>;
     fn as_string(&self) -> Result<String, F>;
     fn new_from_bool(&self, value: bool) -> Self;
+    fn new_from_string(value: impl ToString) -> Self;
 }
 
 pub trait ExprBuiltin<T, F>: Debug
@@ -79,6 +82,12 @@ pub enum ExprUnOp {
     Not,
 }
 
+#[derive(Debug, PartialEq, Copy, Clone)]
+pub enum ExprMapType {
+    List,
+    Object,
+}
+
 #[derive(Clone)]
 pub struct ExprBuiltinWrapper<T, F>(String, Rc<dyn ExprBuiltin<T, F>>)
 where
@@ -110,11 +119,10 @@ where
     Var(String),
     UnOp(ExprUnOp, Expr<T, F>),
     BinOp(ExprBinOp, Expr<T, F>, Expr<T, F>),
-    FuncDefIdent(String, Expr<T, F>),
-    FuncDefPattern(Vec<String>, Expr<T, F>),
+    FuncDef(Matcher, Expr<T, F>),
     FuncDefBuiltin(ExprBuiltinWrapper<T, F>),
     Let(Vec<(String, Expr<T, F>)>, Expr<T, F>),
-    MapList(Expr<T, F>, Expr<T, F>),
+    Map(ExprMapType, Expr<T, F>, Expr<T, F>),
     FuncCall(Expr<T, F>, Expr<T, F>),
     Bind(ExprSet<T, F>, Expr<T, F>),
     #[default]
@@ -339,11 +347,10 @@ where
             ExprType::Var(..) => true,
             ExprType::UnOp(..) => true,
             ExprType::BinOp(..) => true,
-            ExprType::FuncDefIdent(..) => false,
-            ExprType::FuncDefPattern(..) => false,
+            ExprType::FuncDef(..) => false,
             ExprType::FuncDefBuiltin(..) => false,
             ExprType::Let(..) => true,
-            ExprType::MapList(..) => true,
+            ExprType::Map(..) => true,
             ExprType::FuncCall(..) => true,
             ExprType::Bind(..) => true,
             ExprType::Null => false,
@@ -421,28 +428,17 @@ where
                         Ok(ExprType::Bind(vars, target_expr.clone()).loc(loc))
                     }
                     ExprStorage {
-                        tok: ExprType::FuncDefIdent(arg_name, func_expr),
+                        tok: ExprType::FuncDef(matcher, func_expr),
                         ..
                     } => {
-                        let mut new_scope = varspace;
-                        new_scope.remove(arg_name);
-                        Ok(ExprType::FuncDefIdent(
-                            arg_name.clone(),
-                            ExprType::Bind(new_scope, func_expr.clone()).reref(func_expr.get_loc()),
-                        )
-                        .loc(loc))
-                    }
-                    ExprStorage {
-                        tok: ExprType::FuncDefPattern(items, expr),
-                        ..
-                    } => {
-                        let mut new_scope = varspace;
-                        for item in items.iter() {
-                            new_scope.remove(item);
-                        }
-                        Ok(ExprType::FuncDefPattern(
-                            items.clone(),
-                            ExprType::Bind(new_scope, expr.clone()).reref(expr.get_loc()),
+                        // Note: varspace move into the FuncDef here, but
+                        // variables coming from the matcher needs higher
+                        // priority. This all depends on when resolving FuncDef
+                        // later in FuncCall, the resuling varspace is merged
+                        // into the contained Bind
+                        Ok(ExprType::FuncDef(
+                            matcher.clone(),
+                            ExprType::Bind(varspace, func_expr.clone()).reref(func_expr.get_loc()),
                         )
                         .loc(loc))
                     }
@@ -451,9 +447,10 @@ where
                         loc: biloc,
                     } => Ok(ExprType::FuncDefBuiltin(expr_builtin.clone()).loc(biloc.clone())),
                     ExprStorage {
-                        tok: ExprType::MapList(func, input),
+                        tok: ExprType::Map(typ, func, input),
                         ..
-                    } => Ok(ExprType::MapList(
+                    } => Ok(ExprType::Map(
+                        typ.clone(),
                         ExprType::Bind(varspace.clone(), func.clone()).reref(func.get_loc()),
                         ExprType::Bind(varspace.clone(), input.clone()).reref(input.get_loc()),
                     )
@@ -495,11 +492,11 @@ where
                     )
                     .loc(loc)),
                     ExprStorage {
-                        tok: ExprType::FuncCall(fexpr, fargs),
+                        tok: ExprType::FuncCall(fargs, fexpr),
                         ..
                     } => Ok(ExprType::FuncCall(
-                        ExprType::Bind(varspace.clone(), fexpr.clone()).reref(fexpr.get_loc()),
-                        ExprType::Bind(varspace, fargs.clone()).reref(fargs.get_loc()),
+                        ExprType::Bind(varspace.clone(), fargs.clone()).reref(fargs.get_loc()),
+                        ExprType::Bind(varspace, fexpr.clone()).reref(fexpr.get_loc()),
                     )
                     .loc(loc)),
                     ExprStorage {
@@ -525,87 +522,97 @@ where
                     .clone()
                     .loc(loc)),
                 ExprStorage {
-                    tok: ExprType::FuncCall(fexpr, fargs),
+                    tok: ExprType::FuncCall(fargs, fexpr),
                     loc,
-                } => {
-                    let (mut args, func_expr): (ExprSet<T, F>, Expr<T, F>) =
-                        match &*fexpr.res_type().map_err(|e| e.reref(&loc))? {
-                            ExprStorage {
-                                tok: ExprType::FuncDefIdent(arg_name, fimpl),
-                                ..
-                            } => Ok((
-                                ExprSet::from([(arg_name.clone(), fargs.clone())]),
-                                fimpl.clone(),
-                            )),
-                            ExprStorage {
-                                tok: ExprType::FuncDefPattern(arg_names, fimpl),
-                                loc: fexprloc,
-                            } => {
-                                fargs.resolve().map_err(|e| e.reref(fexprloc))?;
-                                let mut new_vars = ExprSet::new();
-                                for arg_name in arg_names {
-                                    let arg_value = fargs.get_item(&arg_name)?;
-                                    new_vars.insert(arg_name.clone(), arg_value).map_or_else(
-                                        || Ok(()),
-                                        |_| Err(Error::new(ErrorType::DupKey, arg_name.clone())),
-                                    )?;
-                                }
-                                Ok((new_vars, fimpl.clone()))
-                            }
-                            ExprStorage {
-                                tok: ExprType::FuncDefBuiltin(ExprBuiltinWrapper(_, funcrc)),
-                                ..
-                            } => {
-                                let res = funcrc.as_ref().call(fargs)?;
-                                Ok((ExprSet::new(), res))
-                            }
-                            ExprStorage { tok: _, loc: floc } => Err(Error::new(
-                                ErrorType::Scope,
-                                format!("called func, but it's a {}", fexpr),
-                            )
-                            .reref(floc)),
-                        }?;
+                } => match &*fexpr.res_type().map_err(|e| e.reref(&loc))? {
+                    ExprStorage {
+                        tok: ExprType::FuncDef(matcher, fimpl),
+                        ..
+                    } => {
+                        let (mut fbound, fexpr) = match &fimpl.inner_ref().tok {
+                            ExprType::Bind(fbound, fexpr) => (fbound.clone(), fexpr.clone()),
+                            _ => (ExprSet::new(), fimpl.clone()),
+                        };
 
-                    // If function contains a bound scope, it should still apply,
-                    // and not overwrite input arguments.
-                    match &*func_expr.inner_ref() {
-                        ExprStorage {
-                            tok: ExprType::Bind(varspace, inner_expr),
-                            loc: floc,
-                        } => {
-                            let mut merged_varspace = varspace.clone();
-                            merged_varspace.append(&mut args);
-                            Ok(ExprType::Bind(merged_varspace, inner_expr.clone())
-                                .loc(floc.clone()))
-                        }
-                        _ => Ok(ExprType::Bind(args, func_expr.clone()).loc(loc)),
+                        let mut vars = matcher.run(fargs)?;
+
+                        fbound.append(&mut vars);
+
+                        Ok(ExprType::Bind(fbound, fexpr.clone()).loc(loc))
                     }
-                }
+                    ExprStorage {
+                        tok: ExprType::FuncDefBuiltin(ExprBuiltinWrapper(_, funcrc)),
+                        ..
+                    } => Ok(ExprType::Bind(ExprSet::new(), funcrc.as_ref().call(fargs)?).loc(loc)),
+                    ExprStorage { tok: _, loc: floc } => Err(Error::new(
+                        ErrorType::Scope,
+                        format!("called func, but it's a {}", fexpr),
+                    )
+                    .reref(floc)),
+                },
                 ExprStorage {
-                    tok: ExprType::MapList(func, input),
+                    tok: ExprType::Map(typ, func, input),
                     loc,
                 } => {
                     input.resolve().map_err(|e| e.reref(&loc))?;
-                    match &*input.inner_ref() {
+                    let input_items = match &*input.inner_ref() {
                         ExprStorage {
                             tok: ExprType::List(input_vec),
                             ..
-                        } => Ok(ExprType::List(
-                            input_vec
+                        } => Ok(input_vec.iter().cloned().collect::<Vec<_>>()),
+                        ExprStorage {
+                            tok: ExprType::Object(args),
+                            ..
+                        } => {
+                            let args = args
                                 .iter()
-                                .map(|iel| {
-                                    ExprType::FuncCall(func.clone(), iel.clone())
-                                        .reref(iel.get_loc())
+                                .map(|(k, v)| {
+                                    ExprType::Tuple(vec![
+                                        ExprType::Value(T::new_from_string(k)).reref(v.get_loc()),
+                                        v.clone(),
+                                    ])
+                                    .reref(v.get_loc())
                                 })
-                                .collect::<Vec<_>>(),
-                        )
-                        .loc(loc)),
+                                .collect::<Vec<_>>();
+                            Ok(args)
+                        }
                         _ => Err(Error::new(
                             ErrorType::Eval,
-                            format!("Foreach over non-list: {}", input),
+                            format!("Foreach over non-iterable: {}", input),
                         )
                         .reref(&loc)),
-                    }
+                    }?;
+
+                    let output_items = input_items
+                        .into_iter()
+                        .map(|iel| {
+                            let loc = iel.get_loc();
+                            ExprType::FuncCall(iel, func.clone()).reref(loc)
+                        })
+                        .collect::<Vec<_>>();
+
+                    let output = match typ {
+                        ExprMapType::List => ExprType::List(output_items),
+                        ExprMapType::Object => ExprType::Object(
+                            output_items
+                                .into_iter()
+                                .map(|el| match &*el.res_type().map_err(|e| e.reref(&loc))? {
+                                    ExprStorage {
+                                        tok: ExprType::Tuple(els),
+                                        ..
+                                    } if els.len() == 2 => {
+                                        Ok((els[0].value()?.as_string()?, els[1].clone()))
+                                    }
+                                    _ => Err(Error::new(
+                                        ErrorType::Type,
+                                        "Expecting tuple of 2 elements",
+                                    )
+                                    .reref(&el.get_loc())),
+                                })
+                                .collect::<Result<BTreeMap<String, Expr<T, F>>, F>>()?,
+                        ),
+                    };
+                    Ok(output.loc(loc))
                 }
                 ExprStorage {
                     tok: ExprType::UnOp(op, expr),

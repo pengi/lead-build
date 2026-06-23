@@ -207,4 +207,8 @@ where
     fn new_from_bool(&self, value: bool) -> Self {
         Value::Bool(value)
     }
+
+    fn new_from_string(value: impl ToString) -> Self {
+        Value::String(value.to_string())
+    }
 }

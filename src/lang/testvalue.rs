@@ -194,4 +194,8 @@ impl ExprOps<FRef> for TestValue {
     fn new_from_bool(&self, value: bool) -> Self {
         TestValue::Bool(value)
     }
+
+    fn new_from_string(value: impl ToString) -> Self {
+        TestValue::String(value.to_string())
+    }
 }

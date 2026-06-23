@@ -91,18 +91,8 @@ where
                 write!(f, ")")?;
                 Ok(())
             }
-            ExprType::FuncDefIdent(name, expr) => {
-                write!(f, "{}: ", name)?;
-                expr.export(indent, f)?;
-                Ok(())
-            }
-            ExprType::FuncDefPattern(items, expr) => {
-                f.write_str("{")?;
-                for item in items {
-                    Display::fmt(&item, f)?;
-                    f.write_str(", ")?;
-                }
-                f.write_str("...}: ")?;
+            ExprType::FuncDef(matcher, expr) => {
+                write!(f, "|{}| ", matcher)?;
                 expr.export(indent, f)?;
                 Ok(())
             }
@@ -120,8 +110,11 @@ where
                 expr.export(indent + 1, f)?;
                 Ok(())
             }
-            ExprType::MapList(func, input) => {
-                write!(f, "[ ")?;
+            ExprType::Map(typ, func, input) => {
+                match typ {
+                    ExprMapType::List => write!(f, "[ ")?,
+                    ExprMapType::Object => write!(f, "{{ ")?,
+                };
                 newline(indent + 1, f)?;
                 func.export(indent + 1, f)?;
                 newline(indent, f)?;
@@ -129,10 +122,13 @@ where
                 newline(indent + 1, f)?;
                 input.export(indent + 1, f)?;
                 newline(indent, f)?;
-                write!(f, " ]")?;
+                match typ {
+                    ExprMapType::List => write!(f, " ]")?,
+                    ExprMapType::Object => write!(f, " }}")?,
+                };
                 Ok(())
             }
-            ExprType::FuncCall(fexpr, farg) => {
+            ExprType::FuncCall(farg, fexpr) => {
                 write!(f, "(")?;
                 newline(indent + 1, f)?;
                 fexpr.export(indent + 1, f)?;

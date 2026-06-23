@@ -7,7 +7,7 @@ use std::{
 
 use crate::{
     Expr,
-    lang::{Error, ErrorType, ExprBuiltin, ExprSet, ExprType, Result},
+    lang::{Error, ErrorType, ExprBuiltin, ExprSet, ExprType, Matcher, Result},
     ninjawriter::{NinjaArg, NinjaFile, NinjaRuleRef},
     path::VirtPath,
     value::Value,
@@ -218,9 +218,9 @@ where
         let mut rule_args: BTreeSet<String> = BTreeSet::new();
 
         /* Identify arguments */
-        let args = match arg.inner_ref().tok.try_as_func_def_pattern_ref() {
-            Some((items, _expr)) => Ok(items.clone()),
-            None => Err(Error::new(
+        let match_items = match arg.inner_ref().tok.try_as_func_def_ref() {
+            Some((Matcher::Object(items, _), _expr)) => Ok(items.clone()),
+            _ => Err(Error::new(
                 ErrorType::Type,
                 "pb.rule needs to take a pattern function as argument",
             )),
@@ -228,8 +228,9 @@ where
 
         /* Generate object with placeholders */
         let var_obj = ExprType::Object(
-            args.iter()
-                .map(|name| {
+            match_items
+                .iter()
+                .map(|(name, _)| {
                     /* Also store names for validation from PbBuild */
                     rule_args.insert(name.clone());
 
@@ -249,7 +250,7 @@ where
         .reref(loc.clone());
 
         /* Generate rule function with variable placeholders and call */
-        let rule_func: Expr<Value, F> = ExprType::FuncCall(arg, var_obj).reref(loc.clone());
+        let rule_func: Expr<Value, F> = ExprType::FuncCall(var_obj, arg).reref(loc.clone());
         rule_func.resolve()?;
 
         /* Read variables */
