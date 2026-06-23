@@ -122,6 +122,7 @@ where
     FuncDef(Matcher, Expr<T, F>),
     FuncDefBuiltin(ExprBuiltinWrapper<T, F>),
     Let(Vec<(Matcher, Expr<T, F>)>, Expr<T, F>),
+    Fold(Expr<T, F>, Expr<T, F>, Expr<T, F>),
     Map(ExprMapType, Expr<T, F>, Expr<T, F>),
     FuncCall(Expr<T, F>, Expr<T, F>),
     Bind(ExprSet<T, F>, Expr<T, F>),
@@ -350,6 +351,7 @@ where
             ExprType::FuncDef(..) => false,
             ExprType::FuncDefBuiltin(..) => false,
             ExprType::Let(..) => true,
+            ExprType::Fold(..) => true,
             ExprType::Map(..) => true,
             ExprType::FuncCall(..) => true,
             ExprType::Bind(..) => true,
@@ -449,6 +451,15 @@ where
                         tok: ExprType::FuncDefBuiltin(expr_builtin),
                         loc: biloc,
                     } => Ok(ExprType::FuncDefBuiltin(expr_builtin.clone()).loc(biloc.clone())),
+                    ExprStorage {
+                        tok: ExprType::Fold(func, init, input),
+                        ..
+                    } => Ok(ExprType::Fold(
+                        ExprType::Bind(varspace.clone(), func.clone()).reref(func.get_loc()),
+                        ExprType::Bind(varspace.clone(), init.clone()).reref(func.get_loc()),
+                        ExprType::Bind(varspace.clone(), input.clone()).reref(input.get_loc()),
+                    )
+                    .loc(loc)),
                     ExprStorage {
                         tok: ExprType::Map(typ, func, input),
                         ..
@@ -553,6 +564,33 @@ where
                     )
                     .reref(floc)),
                 },
+                ExprStorage {
+                    tok: ExprType::Fold(func, init, input),
+                    loc,
+                } => {
+                    let mut output = init;
+                    match &*input.res_type()? {
+                        ExprStorage {
+                            tok: ExprType::List(input_items),
+                            loc: input_loc,
+                        } => {
+                            for item in input_items.iter() {
+                                output = ExprType::FuncCall(
+                                    item.clone(),
+                                    ExprType::FuncCall(output, func.clone())
+                                        .reref(input_loc.clone()),
+                                )
+                                .reref(item.get_loc());
+                            }
+                            Ok(output.inner_ref().clone())
+                        }
+                        _ => Err(Error::new(
+                            ErrorType::Eval,
+                            format!("Fold over non-list: {}", input),
+                        )
+                        .reref(&loc)),
+                    }
+                }
                 ExprStorage {
                     tok: ExprType::Map(typ, func, input),
                     loc,

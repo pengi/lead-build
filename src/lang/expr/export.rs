@@ -110,6 +110,20 @@ where
                 expr.export(indent + 1, f)?;
                 Ok(())
             }
+            ExprType::Fold(func, init, input) => {
+                write!(f, "( ")?;
+                newline(indent + 1, f)?;
+                func.export(indent + 1, f)?;
+                newline(indent, f)?;
+                write!(f, " <- ")?;
+                newline(indent + 1, f)?;
+                init.export(indent + 1, f)?;
+                write!(f, " | ")?;
+                input.export(indent + 1, f)?;
+                newline(indent, f)?;
+                write!(f, " )")?;
+                Ok(())
+            }
             ExprType::Map(typ, func, input) => {
                 match typ {
                     ExprMapType::List => write!(f, "[ ")?,

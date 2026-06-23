@@ -582,6 +582,14 @@ fn test_list_commas() {
 }
 
 #[test]
+fn test_list_fold() {
+    assert_eq!(
+        eval("(|prev field| (prev*10 + field) <- 7 .. [1, 2, 3] )"),
+        eval("7123")
+    );
+}
+
+#[test]
 fn test_list_map_list_to_list() {
     assert_eq!(eval("[ |a| (a*2) <- [1, 2, 3] ]"), eval("[2, 4, 6]"));
 }

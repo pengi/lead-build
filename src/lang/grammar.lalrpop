@@ -145,6 +145,7 @@ ExprAttrSel: Expr<T, F> = {
 };
 
 ExprListComp: Expr<T, F> = {
+    <l: @L> "(" <func:Expr> "<-" <init:Expr> ".." <list:ExprTerm> ")" <r: @R> => ExprType::Fold(func, init, list).toexpr(l, r, f),
     <l: @L> "[" <func:Expr> "<-" <list:ExprTerm> "]" <r: @R> => ExprType::Map(ExprMapType::List, func, list).toexpr(l, r, f),
     <l: @L> "{" <func:Expr> "<-" <list:ExprTerm> "}" <r: @R> => ExprType::Map(ExprMapType::Object, func, list).toexpr(l, r, f),
     <ExprTerm>
