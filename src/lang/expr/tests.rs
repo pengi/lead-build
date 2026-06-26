@@ -556,7 +556,7 @@ fn test_multi_level_obj() {
 #[test]
 fn test_list_concat() {
     assert_eq!(
-        eval("[1, 3, 5, 7] + [2, 4, 6, 8]"),
+        eval("[1, 3, 5, 7] ++ [2, 4, 6, 8]"),
         eval("[1, 3, 5, 7, 2, 4, 6, 8]")
     );
 }

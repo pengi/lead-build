@@ -2,5 +2,5 @@ site_name: Lead Build
 site_author: Max Sikström
 site_description: Lead - Declarative build environment
 
-
-theme: readthedocs
+theme:
+  name: readthedocs

@@ -1,12 +1,19 @@
 # Lead Build
 
-Something about declarative builds
+Lead Build is a declarative build system for expressing build outputs in terms of their dependencies. Instead of scripting a sequence of commands, Lead Build describes the desired result and how it is composed.
 
-```
+## Why Lead Build
+
+- Declarative: describe *what* to build, not focused on the sequence of commands to build it.
+- Modular: build logic can be packaged and reused across projects.
+- Reusable: common build patterns can be shared without duplicating file paths or command sequences.
+
+## Example
+
+```lead
 |{include, cwd, pb, ...}|
 let
     leadlib = include cwd / "lead-lib" / "main.pbb";
-
     my_lib = include cwd / "mylib" / "main.pbb";
 in
 leadlib.lang.c.build {
@@ -23,59 +30,25 @@ leadlib.lang.c.build {
     ] ++ my_lib.includes;
 }
 ```
-Lead build is a declarative build system, providing modularity and reusability.
-
-## Declarative
-
-A classic script defines a build as a sequence of operations to reach a goal.
-The concept of "sequence of operations" means it describes _how_ to produce the
-output, rather than what the _goal_.
-
-In a declarative build system like lead, the goal is in focus, how to combine
-it from its _dependencies_, and only its dependencies.
-
-In lead, each _intermediate_ node is treated as a varaible, not the file it
-produces, in contrast to "gnu make", which also means it can be prameterized
-into functions.
-
-## Modularity
-
-Since intermediate build steps can be paramterized, it is possible to make
-modules reusable for different targets.
-
-For example, a module producing an `.o` file, with some headers, can fully own
-its build description, but still be parameterized on which compiler to use,
-where the intermediate files should be placed, and even which compiler and
-architecture should be the goal, where the project using the library only needs
-to call the librarys lead `.pbb` script.
-
-## Reusability
-
-With the modularity and paramterization in mind, it is possible to define
-conventions of how to call libraries and shared code, to be able to reuse
-modules easily between projects, without needing to specify paths.
-
-# Name
-
-The goal is to make "Pure builds", and thus the tool `pb`. Which naturally means
-results the project "lead"
 
 ## Getting started
 
-Before getting started with builds, lets learn the basics of the language. It's
-more than just build rules.
+Start with the language itself, then move on to functions, iteration, and paths.
 
-Recommended path is to start with language basics:
+- [Introduction](language/00-introduction.md)
+- [Core Language Concepts](language/01-basics.md)
+- [Expressions](language/02-expressions.md)
+- [Functions and Pattern Matching](language/03-functions.md)
+- [List operations](language/04-list-operations.md)
+- [Paths](language/05-paths.md)
 
-- [Language basics](language/01-basics.md) - data types, structures and variables
-- [Functions](language/02-functions.md) - learn about functions, and how to reuse
-  patterns
-- [List and object iteration](language/03-list-compherension.md) - List
-  comperensions, iterating over objects, and folding lists. The core of managing
-  lists.
-- [Files, includes and builtins](langauge/04-buildins.md) - how to split your code
-  into multiple files, for reusability.
+## Builds
 
-## Building
+After the language, learn how to express build rules and produce build graphs:
 
-Lets look at step
+- [Rules and builds](builds/01-rules-and-builds.md)
+- [Ninja output](builds/02-ninja.md)
+
+## Next step
+
+After learning the language, the next chapters cover build-specific concepts such as includes, builtins, and project structure.

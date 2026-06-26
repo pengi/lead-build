@@ -698,7 +698,7 @@ where
                         loc: lhs_loc,
                     } => match (op, &*rhs.res_type().map_err(|e| e.reref(lhs_loc))?) {
                         (
-                            ExprBinOp::Add,
+                            ExprBinOp::ListConcat,
                             ExprStorage {
                                 tok: ExprType::List(rhs_list),
                                 ..
