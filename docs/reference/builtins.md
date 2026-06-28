@@ -53,7 +53,9 @@ pb.rule |{input, output, ...}| {
 };
 ```
 
-More information is availble in the [builds](../builds/01-rules-and-builds.md) chapter.
+Note: In `pb.rule`, object matcher defaults (for example, `|{input ? fallback, ...}|`) are not supported.
+
+More information is available in the [builds](../builds/01-rules-and-builds.md) chapter.
 
 ### `pb.build`
 
@@ -67,6 +69,6 @@ pb.build {
 }
 ```
 
-`rule_definition` is the output of `pb.rule`, and rest of the variables are defined from the arguments to the rule definition.
+`rule_definition` is the output of `pb.rule`, and the rest of the variables are defined from the arguments to the rule definition.
 
-More information is availble in the [builds](../builds/01-rules-and-builds.md) chapter.
+More information is available in the [builds](../builds/01-rules-and-builds.md) chapter.

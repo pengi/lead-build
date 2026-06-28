@@ -173,7 +173,7 @@ ExprBind: Expr<T, F> = <l: @L> "bind" <s:AssignStmt*> "in" <r: @R> <e:ExprTerm> 
 // AssignStmt assigns a value to a variable, while LetSetStmt also applies pattern
 // match, for use in a "let" keyword
 //
-LetSetStmt: (Matcher, Expr<T, F>) = <m:Matcher> "=" <e:Expr> ";" => (m, e);
+LetSetStmt: (Matcher<T, F>, Expr<T, F>) = <m:Matcher> "=" <e:Expr> ";" => (m, e);
 AssignStmt: (String, Expr<T, F>) = <i:Ident> "=" <e:Expr> ";" => (i, e);
 
 ExprVar: Expr<T, F> = <l: @L> <s:Ident> <r: @R> => ExprType::Var(s).toexpr(l, r, f);
@@ -183,12 +183,12 @@ ExprVar: Expr<T, F> = <l: @L> <s:Ident> <r: @R> => ExprType::Var(s).toexpr(l, r,
 // Matcher pattern
 //
 
-Matcher: Matcher = {
+Matcher: Matcher<T, F> = {
     <m:MatcherInner> "@" <i:Ident> => Matcher::Alias(m.into(), i),
     <MatcherInner>
 };
 
-MatcherInner: Matcher = {
+MatcherInner: Matcher<T, F> = {
     <i:Ident> => Matcher::Ident(i),
     "_" => Matcher::DontCare,
     "(" <s:TupleComma<Matcher>> ")" => Matcher::Tuple(s),
@@ -202,9 +202,11 @@ MatcherInner: Matcher = {
     "{" <v:(<MatcherVar> ",")*> "..." "}" => Matcher::Object(v, false),
 };
 
-MatcherVar: (String, Matcher) = {
-    <i:Ident> => (i.clone(), Matcher::Ident(i)),
-    <i:Ident> "=" <m:Matcher> => (i, m),
+MatcherVar: (String, Matcher<T, F>, Option<Expr<T, F>>) = {
+    <i:Ident> => (i.clone(), Matcher::Ident(i), None),
+    <i:Ident> "=" <m:Matcher> => (i, m, None),
+    <i:Ident> "?" <d:ExprTerm> => (i.clone(), Matcher::Ident(i), Some(d)),
+    <i:Ident> "=" <m:Matcher> "?" <d:ExprTerm> => (i, m, Some(d)),
 };
 
 //

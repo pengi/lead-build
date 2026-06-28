@@ -6,6 +6,8 @@ Rules and builds are special value types in Lead. They are not ordinary literals
 
 A rule specifies how to transform inputs into outputs. Create a rule with the builtin constructor `pb.rule` by providing a function that declares the variables the rule uses (for example `|{input, output, ...}|`) and returns an object describing the rule template and metadata.
 
+Object matcher defaults (`?`) are not supported in `pb.rule` argument matchers. Keep rule arguments as direct field matches.
+
 Common fields returned by that object:
 - `command` - the command template, typically a list of command-line arguments (for example `["gcc", "-c", "-o", output, "-MMD", "-MF", "${output}.d", input]`) or a string template.
 - `description` - short, human-readable text shown in build output.
@@ -122,4 +124,4 @@ build build/app: gcc_o build/main.o
 
 In this pattern, the first build becomes an input to the second build, forming a simple build dependency chain.
 
-In this chapter have looked at the conepts of how to construct builds. In the next chapter we will look at how to use the language constructs to separate *how* to build from *what* to build.
+In this chapter, we looked at the concepts behind constructing builds. In the next chapter, we will look at how to use language constructs to separate *how* to build from *what* to build.

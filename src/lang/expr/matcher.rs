@@ -6,22 +6,34 @@ use std::{
 use super::{Error, ErrorType, Exportable, Expr, ExprOps, ExprSet, ExprType, Result};
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Matcher {
-    Alias(Box<Matcher>, String),
+pub enum Matcher<T, F>
+where
+    T: Clone + PartialEq + Display + ExprOps<F>,
+    F: Clone,
+{
+    Alias(Box<Matcher<T, F>>, String),
     DontCare,
     Ident(String),
-    Tuple(Vec<Matcher>),
-    Object(Vec<(String, Matcher)>, bool),
+    Tuple(Vec<Matcher<T, F>>),
+    Object(Vec<(String, Matcher<T, F>, Option<Expr<T, F>>)>, bool),
 }
 
-impl Display for Matcher {
+impl<T, F> Display for Matcher<T, F>
+where
+    T: Clone + PartialEq + Display + ExprOps<F> + Debug + Exportable,
+    F: Clone + Debug,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self) // TODO: Don't use debug here
     }
 }
 
-impl Matcher {
-    pub fn run<T, F>(&self, expr: Expr<T, F>) -> Result<ExprSet<T, F>, F>
+impl<T, F> Matcher<T, F>
+where
+    T: Clone + PartialEq + Display + ExprOps<F> + Debug + Exportable,
+    F: Clone + Debug,
+{
+    pub fn run(&self, expr: Expr<T, F>) -> Result<ExprSet<T, F>, F>
     where
         T: Clone + PartialEq + Display + ExprOps<F> + Debug + Exportable,
         F: Clone + Debug,
@@ -59,14 +71,17 @@ impl Matcher {
                     let mut input = exprs.clone();
                     let mut output = ExprSet::new();
 
-                    for (itname, itmatch) in items.iter() {
-                        let in_expr = input.remove(itname).ok_or_else(|| {
-                            Error::new(
-                                ErrorType::NoValue,
-                                format!("Expected field '{}' not found", itname),
-                            )
-                            .reref(&expr.get_loc())
-                        })?;
+                    for (itname, itmatch, itdefault) in items.iter() {
+                        let in_expr = input
+                            .remove(itname)
+                            .or_else(|| itdefault.clone())
+                            .ok_or_else(|| {
+                                Error::new(
+                                    ErrorType::NoValue,
+                                    format!("Expected field '{}' not found", itname),
+                                )
+                                .reref(&expr.get_loc())
+                            })?;
                         let mut subvars = itmatch.run(in_expr.clone())?;
                         // TODO: Check if overlapping keysets
                         output.append(&mut subvars);

@@ -455,6 +455,21 @@ fn test_parse_func_call_match_tuple() {
 }
 
 #[test]
+fn test_parse_func_call_match_default() {
+    assert_eq!(
+        eval(
+            r#"
+        let
+            func = |{a, b ? 12}| a + b;
+        in
+            func { a = 3; }
+        "#
+        ),
+        eval("15")
+    );
+}
+
+#[test]
 fn test_parse_func_call_match_alias() {
     assert_eq!(
         eval(

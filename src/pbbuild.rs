@@ -230,12 +230,19 @@ where
         let var_obj = ExprType::Object(
             match_items
                 .iter()
-                .map(|(name, _)| {
+                .map(|(name, _, default)| {
+                    if let Some(_) = default {
+                        return Err(Error::new(
+                            ErrorType::Type,
+                            format!("pb.rule does not support default values for {}", name),
+                        ));
+                    }
+
                     /* Also store names for validation from PbBuild */
                     rule_args.insert(name.clone());
 
                     /* Generate element */
-                    (
+                    Ok((
                         name.clone(),
                         ExprType::from(Value::BuildVar(match name.as_str() {
                             "input" => "in".into(),
@@ -243,9 +250,9 @@ where
                             _ => name.clone(),
                         }))
                         .reref(loc.clone()),
-                    )
+                    ))
                 })
-                .collect::<ExprSet<Value, F>>(),
+                .collect::<Result<ExprSet<Value, F>, F>>()?,
         )
         .reref(loc.clone());
 
