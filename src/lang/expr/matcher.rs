@@ -24,7 +24,53 @@ where
     F: Clone + Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self) // TODO: Don't use debug here
+        self.export(0, f)
+    }
+}
+
+impl<T, F> Exportable for Matcher<T, F>
+where
+    T: Clone + PartialEq + Display + ExprOps<F> + Debug + Exportable,
+    F: Clone + Debug,
+{
+    fn export(&self, indent: i32, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Matcher::Alias(matcher, name) => {
+                write!(f, "{} = ", name)?;
+                matcher.export(indent, f)?;
+                Ok(())
+            }
+            Matcher::DontCare => write!(f, "_"),
+            Matcher::Ident(name) => write!(f, "{}", name),
+            Matcher::Tuple(matchers) => {
+                write!(f, "(")?;
+                for (i, matcher) in matchers.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    matcher.export(indent, f)?;
+                }
+                write!(f, ")")
+            }
+            Matcher::Object(items, need_all) => {
+                write!(f, "{{")?;
+                for (i, (name, matcher, default)) in items.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{} = ", name)?;
+                    matcher.export(indent, f)?;
+                    if let Some(default) = default {
+                        write!(f, " ? ")?;
+                        default.export(indent, f)?;
+                    }
+                }
+                if *need_all {
+                    write!(f, ", ...")?;
+                }
+                write!(f, "}}")
+            }
+        }
     }
 }
 

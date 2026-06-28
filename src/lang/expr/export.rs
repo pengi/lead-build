@@ -92,7 +92,9 @@ where
                 Ok(())
             }
             ExprType::FuncDef(matcher, expr) => {
-                write!(f, "|{}| ", matcher)?;
+                f.write_str("|")?;
+                matcher.export(indent, f)?;
+                f.write_str("| ")?;
                 expr.export(indent, f)?;
                 Ok(())
             }
