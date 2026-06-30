@@ -92,20 +92,6 @@ fn test_let_pattern() {
 }
 
 #[test]
-fn test_bind() {
-    assert_eq!(
-        eval("let x = 12; in (bind a = 21; b = 37; in a)"),
-        eval("21")
-    );
-}
-
-#[test]
-#[should_panic]
-fn test_bind_error() {
-    eval("let x = 12; in (bind a = 21; in x)");
-}
-
-#[test]
 fn test_invalid_var() -> Result<(), FRef> {
     let expr: Expr<TestValue, FRef> =
         ExprType::Bind(ExprSet::new(), parse_str("invalid_var", &1).unwrap()).builtin();

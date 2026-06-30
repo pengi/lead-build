@@ -34,7 +34,6 @@ pub Expr: Expr<T, F> = {
 
 ExprBindBlocks: Expr<T, F> = {
     <l: @L> "let" <s:LetSetStmt*> "in" <r: @R> <e:ExprBindBlocks> => ExprType::Let(s, e).toexpr(l, r, f),
-    <l: @L> "bind" <s:AssignStmt*> "in" <r: @R> <e:ExprBindBlocks> => ExprType::Bind(s.into_iter().collect(), e).toexpr(l, r, f),
     <ExprFuncDef>
 };
 

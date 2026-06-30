@@ -101,7 +101,6 @@ Following operators are available:
 | Operator                   | Precedence | Description                       |
 | -------------------------- | ---------- | --------------------------------- |
 | `let ... in ...`           | 1          | let block expression              |
-| `bind ... in ...`          | 1          | bind block expression             |
 | `|matcher| expr`           | 2          | Function definition               |
 | `lhs -> rhs`               | 3          | Logical implication               |
 | `lhs || rhs`               | 4          | Logical or                        |
