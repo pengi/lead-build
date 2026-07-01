@@ -114,7 +114,7 @@ where
     Object(ExprSet<T, F>),
     List(Vec<Expr<T, F>>),
     Tuple(Vec<Expr<T, F>>),
-    AttrSel(Expr<T, F>, String),
+    AttrSel(Expr<T, F>, Expr<T, F>),
     Value(T),
     Var(String),
     UnOp(ExprUnOp, Expr<T, F>),
@@ -412,8 +412,8 @@ where
                         tok: ExprType::AttrSel(val, attr),
                         ..
                     } => Ok(ExprType::AttrSel(
-                        ExprType::Bind(varspace, val.clone()).reref(val.get_loc()),
-                        attr.clone(),
+                        ExprType::Bind(varspace.clone(), val.clone()).reref(val.get_loc()),
+                        ExprType::Bind(varspace, attr.clone()).reref(attr.get_loc()),
                     )
                     .loc(loc)),
                     ExprStorage {
@@ -555,7 +555,7 @@ where
                     tok: ExprType::AttrSel(val, attr),
                     loc,
                 } => Ok(val
-                    .get_item(attr.as_str())?
+                    .get_item(attr.value()?.as_string()?.as_str())?
                     .inner_ref()
                     .tok
                     .clone()

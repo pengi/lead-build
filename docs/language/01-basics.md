@@ -29,6 +29,15 @@ Objects are the primary data structure in the language. They group named fields 
 field_name = expression;
 ```
 
+The field name can be either an identifier or a quoted string. This is useful when a key contains characters that are not valid in identifiers.
+
+```lead
+{
+    "compiler-flags" = ["-O2", "-Wall"];
+    normal_name = 1;
+}
+```
+
 Here is a simple example:
 
 ```lead

@@ -578,6 +578,52 @@ fn test_multi_level_obj() {
 }
 
 #[test]
+fn test_object_string_key_assign_and_select() {
+    assert_eq!(
+        eval("let a = { \"my-key\" = 7; }; in a.{\"my-key\"}"),
+        eval("7")
+    );
+}
+
+#[test]
+fn test_attr_select_computed_from_paren_expr() {
+    assert_eq!(
+        eval(
+            r#"
+            let
+                obj = { name = 44; };
+            in
+                obj.{("name")}
+            "#
+        ),
+        eval("44")
+    );
+}
+
+#[test]
+fn test_attr_select_computed_from_expr() {
+    assert_eq!(
+        eval(
+            r#"
+            let
+                obj = { name = 99; };
+            in
+                obj.{"na" + "me"}
+            "#
+        ),
+        eval("99")
+    );
+}
+
+#[test]
+fn test_attr_select_ident_still_works() {
+    assert_eq!(
+        eval("let obj = { field = 123; }; in obj.field"),
+        eval("123")
+    );
+}
+
+#[test]
 fn test_list_concat() {
     assert_eq!(
         eval("[1, 3, 5, 7] ++ [2, 4, 6, 8]"),

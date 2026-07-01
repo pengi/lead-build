@@ -14,6 +14,7 @@ use super::{
     TypeSwitchCase,
     TypeLetSetStmt,
     TypeAssignStmt,
+    unescape_str,
     unpack_str,
     unpack_int,
     unpack_bool
@@ -121,7 +122,11 @@ ExprFuncCall: Expr<T, F> = {
 };
 
 ExprAttrSel: Expr<T, F> = {
-    <l: @L> <lhs:ExprAttrSel> "." <rhs:Ident> <r: @R> => ExprType::AttrSel(lhs, rhs).toexpr(l, r, f),
+    <l: @L> <lhs:ExprAttrSel> "." <li: @L> <rhs:Ident> <r: @R> => ExprType::AttrSel(
+        lhs,
+        ExprType::Value(T::new_from_string(rhs)).toexpr(li, r, f)
+    ).toexpr(l, r, f),
+    <l: @L> <lhs:ExprAttrSel> "." "{" <rhs:Expr> "}" <r: @R> => ExprType::AttrSel(lhs, rhs).toexpr(l, r, f),
     <ExprListComp>,
 };
 
@@ -166,7 +171,10 @@ ExprTuple: Expr<T, F> = <l: @L> "(" <s:TupleComma<Expr>> ")" <r: @R> => ExprType
 // match, for use in a "let" keyword
 
 LetSetStmt: TypeLetSetStmt<T, F> = <m:Matcher> "=" <e:Expr> ";" => (m, e);
-AssignStmt: TypeAssignStmt<T, F> = <i:Ident> "=" <e:Expr> ";" => (i, e);
+AssignStmt: TypeAssignStmt<T, F> = {
+    <i:Ident> "=" <e:Expr> ";" => (i, e),
+    <i:RawString> "=" <e:Expr> ";" => (i, e),
+};
 
 ExprVar: Expr<T, F> = <l: @L> <s:Ident> <r: @R> => ExprType::Var(s).toexpr(l, r, f);
 
@@ -213,8 +221,10 @@ ExprValue: Expr<T, F> = {
     <l: @L> "true" <r: @R> => unpack_bool(true).toexpr(l, r, f),
     <l: @L> "false" <r: @R> => unpack_bool(false).toexpr(l, r, f),
     <l: @L> <s:r"[0-9]+"> <r: @R> => unpack_int(s).toexpr(l, r, f),
-    <l: @L> <s:r#""([^"]|\\.)*""#> <r: @R> => unpack_str(s, l, r, f).unwrap(),
+    <l: @L> <s:RawString> <r: @R> => unpack_str(s, l, r, f).unwrap(),
 };
+
+RawString: String = <s:r#""([^"]|\\.)*""#> => unescape_str(s);
 
 //
 // Library

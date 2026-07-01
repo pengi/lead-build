@@ -29,7 +29,9 @@ Example: `"hellorld"` or `"Hello ${name}!"`
 
 ### Objects
 
-Objects are collections of named fields written with `{ key = value, ... }`. They are used for structured data, function arguments, and configuration.
+Objects are collections of named fields written with `{ key = value; ... }`. They are used for structured data, function arguments, and configuration.
+
+Object keys may be written either as identifiers (`name`) or as quoted strings (`"compiler-flags"`).
 
 Example:
 ```lead
@@ -122,6 +124,7 @@ Following operators are available:
 | `-expr`                    | 13         | Numeric negation                  |
 | `func arg`                 | 14         | Function call                     |
 | `object.ident`             | 15         | attribute selection               |
+| `object.{expr}`            | 15         | computed attribute selection      |
 | `( func <- init .. list )` | 16         | list fold                         |
 | `[ func <- iterable ]`     | 16         | list map                          |
 | `{ func <- iterable }`     | 16         | object map                        |

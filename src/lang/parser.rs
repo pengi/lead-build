@@ -75,11 +75,7 @@ where
     Ok(result)
 }
 
-fn unpack_str<T, F>(input: &str, left: usize, right: usize, file: &F) -> Result<Expr<T, F>, F>
-where
-    T: ParsableValue + Clone + PartialEq + Display + ExprOps<F> + Exportable + Debug,
-    F: Clone + Debug,
-{
+fn unescape_str(input: &str) -> String {
     let mut out = String::new();
     let mut chars = input.chars();
 
@@ -113,7 +109,15 @@ where
         out.push(c);
     }
 
-    let parts = string_decode(out.as_str()).unwrap();
+    out
+}
+
+fn unpack_str<T, F>(input: String, left: usize, right: usize, file: &F) -> Result<Expr<T, F>, F>
+where
+    T: ParsableValue + Clone + PartialEq + Display + ExprOps<F> + Exportable + Debug,
+    F: Clone + Debug,
+{
+    let parts = string_decode(input.as_str()).unwrap();
     let mut out_expr: Option<Expr<T, F>> = None;
     for part in parts {
         let part_expr: Expr<T, F> = match part {

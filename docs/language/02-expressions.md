@@ -37,6 +37,7 @@ An expression can also be computed by using any of the builtin operators:
 | Operator      | Function                            |
 | ------------- | ----------------------------------- |
 | `obj.field`   | Select a field from an object       |
+| `obj.{expr}`  | Select a field using a computed key |
 | `func arg`    | Call a function                     |
 | `-expr`       | Negate a value                      |
 | `obj ? field` | Check if an object has an attribute |
@@ -109,6 +110,16 @@ in
 ```
 
 This evaluates to the concatenation `"hello" + myvar`, so the result is `"hello world"`.
+
+When the field name is computed at runtime, use `obj.{expr}`. The expression inside braces must evaluate to a string key.
+
+```lead
+let
+  key = "name";
+  obj = { name = "demo"; };
+in
+  obj.{key}
+```
 
 ## Let-bindings and variables
 
